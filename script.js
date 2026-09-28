@@ -219,10 +219,7 @@ window.T = window.T || function(s) { return s; };
     var chatPane = document.getElementById('chatPane');
     if (!authPane || !chatPane) return;
 
-    var loginTab = document.getElementById('loginTab');
-    var registerTab = document.getElementById('registerTab');
     var loginForm = document.getElementById('loginForm');
-    var registerForm = document.getElementById('registerForm');
     var authError = document.getElementById('authError');
     var chatMessages = document.getElementById('chatMessages');
     var chatForm = document.getElementById('chatForm');
@@ -376,24 +373,6 @@ window.T = window.T || function(s) { return s; };
         });
     }
 
-    function showLoginForm() {
-        loginForm.style.display = '';
-        registerForm.style.display = 'none';
-        loginTab.classList.add('active');
-        registerTab.classList.remove('active');
-        showError('');
-    }
-
-    loginTab.addEventListener('click', showLoginForm);
-
-    registerTab.addEventListener('click', function() {
-        registerTab.classList.add('active');
-        loginTab.classList.remove('active');
-        registerForm.style.display = '';
-        loginForm.style.display = 'none';
-        showError('');
-    });
-
     function bindEmailCheck(inputId, hintId, allow) {
         var input = document.getElementById(inputId);
         var hint = document.getElementById(hintId);
@@ -407,7 +386,6 @@ window.T = window.T || function(s) { return s; };
     }
 
     bindEmailCheck('loginEmail', 'loginEmailHint', ['BENBAIJIE']);
-    bindEmailCheck('regEmail', 'regEmailHint');
 
     loginForm.addEventListener('submit', function(e) {
         e.preventDefault();
@@ -438,55 +416,6 @@ window.T = window.T || function(s) { return s; };
             }).catch(function() { showError('登录失败，请重试'); });
         }).catch(function() {
             showError('无法连接服务器，请重试');
-        });
-    });
-
-    registerForm.addEventListener('submit', function(e) {
-        e.preventDefault();
-        showError('');
-        var username = document.getElementById('regUsername').value.trim();
-        var email = document.getElementById('regEmail').value.trim().toLowerCase();
-        var password = document.getElementById('regPassword').value;
-        if (!username || username.length > 20) {
-            showError('用户名不能为空且不超过20字');
-            return;
-        }
-        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-            showError('邮箱格式不正确');
-            return;
-        }
-        if (password.length < 6) {
-            showError('密码至少6位');
-            return;
-        }
-        var salt = bytesToHex(crypto.getRandomValues(new Uint8Array(16)));
-        pbkdf2(password, salt).then(function(hash) {
-            var row = {
-                email: email,
-                username: username,
-                salt: salt,
-                hash: hash,
-                is_admin: false,
-                created: Math.floor(Date.now() / 1000),
-                updated: Math.floor(Date.now() / 1000)
-            };
-            return sbPost('users', row).then(function(res) {
-                if (res.ok) {
-                    localStorage.setItem('cloud_email', email);
-                    localStorage.setItem('chat_username', username);
-                    localStorage.setItem('chat_admin', '0');
-                    enterChat(username);
-                    return;
-                }
-                var msg = (res.error && res.error.message) || '';
-                if (res.status === 409 || msg.indexOf('duplicate') !== -1) {
-                    showError(msg.indexOf('username') !== -1 ? '该用户名已被使用' : '该邮箱已注册');
-                } else {
-                    showError('注册失败，请重试');
-                }
-            });
-        }).catch(function() {
-            showError('注册失败，请重试');
         });
     });
 
@@ -1120,7 +1049,8 @@ window.T = window.T || function(s) { return s; };
         '没有找到相关帖子': 'No posts found', '当前账号：': 'Account: ', '（管理员）': ' (Admin)',
         '日期 ': 'Date ', '作者 ': 'By ', '关注 ': 'Following ', ' · 粉丝 ': ' · Fans ', ' · 发帖 ': ' · Posts ',
         ' · 回复 ': ' · Replies ', ' · 下载 ': ' · ', ' 次': ' downloads',
-        '提示：账号与主站通用。头像上传、修改密码、找回密码请到主站操作。': 'Tip: accounts are shared with the main site. Manage avatar, password and recovery there.'
+        '提示：账号与主站通用。头像上传、修改密码、找回密码请到主站操作。': 'Tip: accounts are shared with the main site. Manage avatar, password and recovery there.',
+        '注册账号、找回密码请到主站操作': 'Register or reset password on the main site'
     };
     var TEXT_SEL = '.nav-item, .page-title, .social-btn, .software-name, .software-desc, .download-btn, .tip-warning, .home-sub, .group-btn, .auth-tab, .auth-submit, .code-btn, .chat-send, .auth-link, .field-hint, #newPostBtn, #cancelPostBtn, .compose-btns .f-btn, #changePwdBtn, #logoutBtn, .cloud-note';
 
