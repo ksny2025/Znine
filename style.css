@@ -1620,3 +1620,24 @@ body {
     background: rgba(255, 214, 110, 0.12);
     vertical-align: 1px;
 }
+
+.cloud-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 32px;
+    transform: translateX(-50%) translateY(20px);
+    background: rgba(220, 70, 90, 0.92);
+    color: #fff;
+    padding: 10px 22px;
+    border-radius: 999px;
+    font-size: 13px;
+    z-index: 9999;
+    opacity: 0;
+    pointer-events: none;
+    transition: all .25s ease;
+    box-shadow: 0 8px 30px rgba(0,0,0,.4);
+}
+.cloud-toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}

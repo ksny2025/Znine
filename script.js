@@ -1,3 +1,8 @@
+var SB_URL = "https://njakbxadbnxcfboosuki.supabase.co";
+var SB_PUB = "sb_publishable_833cToT_nTGdqVtBsC2QMQ_28Hy1tqZ";
+
+window.T = window.T || function(s) { return s; };
+
 (function() {
     var bgLayer = document.createElement('div');
     bgLayer.className = 'aurora-bg';
@@ -43,7 +48,7 @@
     function revealInPage(pageEl) {
         if (!pageEl) return;
         var items = pageEl.querySelectorAll('.reveal');
-        items.forEach(function(el, i) {
+        items.forEach(function(el) {
             el.classList.remove('in-view');
         });
         requestAnimationFrame(function() {
@@ -76,7 +81,7 @@
     }
 
     navItems.forEach(function(btn) {
-        btn.addEventListener('click', function(e) {
+        btn.addEventListener('click', function() {
             var pageTarget = btn.getAttribute('data-page');
             if (pageTarget && pages[pageTarget]) {
                 switchPage(pageTarget, btn);
@@ -123,12 +128,6 @@
                 if (fallbackSrc) window.open(fallbackSrc, '_blank');
             }
         });
-    });
-
-    var announcementItems = document.querySelectorAll('.announcement-item');
-    announcementItems.forEach(function(item, idx) {
-        item.classList.add('reveal');
-        item.style.transitionDelay = idx * 70 + 'ms';
     });
 
     var cards = document.querySelectorAll('.software-card');
@@ -224,27 +223,40 @@
     var registerTab = document.getElementById('registerTab');
     var loginForm = document.getElementById('loginForm');
     var registerForm = document.getElementById('registerForm');
-    var resetForm = document.getElementById('resetForm');
     var authError = document.getElementById('authError');
     var chatMessages = document.getElementById('chatMessages');
     var chatForm = document.getElementById('chatForm');
     var chatInput = document.getElementById('chatInput');
     var accountInfo = document.getElementById('accountInfo');
     var logoutBtn = document.getElementById('logoutBtn');
-    var forgotLink = document.getElementById('forgotLink');
-    var backToLogin = document.getElementById('backToLogin');
-    var regCodeRow = document.getElementById('regCodeRow');
-    var regCodeBtn = document.getElementById('regCodeBtn');
-    var resetCodeBtn = document.getElementById('resetCodeBtn');
     var changePwdBtn = document.getElementById('changePwdBtn');
     var changePwdForm = document.getElementById('changePwdForm');
-    var pwdError = document.getElementById('pwdError');
 
-    var lastId = 0;
     var pollTimer = null;
+    var deletedCache = {};
+    var usersCache = {};
+    var toastTimer = null;
 
-    function getToken() {
-        return localStorage.getItem('chat_token') || '';
+    function toast(msg) {
+        var el = document.getElementById('cloudToast');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'cloudToast';
+            el.className = 'cloud-toast';
+            document.body.appendChild(el);
+        }
+        el.textContent = msg;
+        el.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(function() { el.classList.remove('show'); }, 3500);
+    }
+
+    function myEmail() {
+        return localStorage.getItem('cloud_email') || '';
+    }
+
+    function myName() {
+        return localStorage.getItem('chat_username') || '';
     }
 
     function isAdmin() {
@@ -254,7 +266,6 @@
     function setAuthVisible(showAuth) {
         authPane.style.display = showAuth ? '' : 'none';
         chatPane.style.display = showAuth ? 'none' : 'flex';
-        annForm.style.display = (!showAuth && isAdmin()) ? 'flex' : 'none';
         if (!showAuth) {
             startPolling();
         } else {
@@ -266,28 +277,108 @@
         authError.textContent = msg || '';
     }
 
-    function apiPost(path, data) {
-        return fetch(path, {
+    function genId() {
+        return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    }
+
+    function bytesToHex(buf) {
+        return Array.from(new Uint8Array(buf)).map(function(b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+    }
+
+    function pbkdf2(password, saltHex) {
+        var enc = new TextEncoder();
+        return crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits'])
+            .then(function(key) {
+                return crypto.subtle.deriveBits({
+                    name: 'PBKDF2',
+                    hash: 'SHA-256',
+                    salt: enc.encode(saltHex),
+                    iterations: 60000
+                }, key, 256);
+            })
+            .then(bytesToHex);
+    }
+
+    function sbFetchRetry(url, opts, tries) {
+        tries = tries || 0;
+        return fetch(url, opts).catch(function(err) {
+            if (tries >= 4) throw err;
+            var delays = [1500, 3000, 5000, 8000];
+            return new Promise(function(res) { setTimeout(res, delays[tries]); })
+                .then(function() { return sbFetchRetry(url, opts, tries + 1); });
+        });
+    }
+
+    function sbGet(path) {
+        return sbFetchRetry(SB_URL + '/rest/v1/' + path, {
+            headers: { 'apikey': SB_PUB }
+        }).then(function(res) {
+            return res.json().then(function(data) {
+                return { ok: res.ok, status: res.status, data: data };
+            });
+        });
+    }
+
+    function sbPost(table, body, ignoreDup) {
+        return sbFetchRetry(SB_URL + '/rest/v1/' + table, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
+            headers: {
+                'apikey': SB_PUB,
+                'Content-Type': 'application/json',
+                'Prefer': ignoreDup ? 'resolution=ignore-duplicates,return=minimal' : 'return=minimal'
+            },
+            body: JSON.stringify(body)
+        }).then(function(res) {
+            if (res.ok) return { ok: true };
+            return res.json().then(function(err) {
+                return { ok: false, status: res.status, error: err };
+            });
+        });
+    }
+
+    function sbDelete(path) {
+        return sbFetchRetry(SB_URL + '/rest/v1/' + path, {
+            method: 'DELETE',
+            headers: { 'apikey': SB_PUB }
+        }).then(function(res) {
+            return { ok: res.ok };
+        });
+    }
+
+    function sbRpc(fn, body) {
+        return sbFetchRetry(SB_URL + '/rest/v1/rpc/' + fn, {
+            method: 'POST',
+            headers: { 'apikey': SB_PUB, 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
         }).then(function(res) { return res.json(); });
     }
 
-    fetch('/api/config').then(function(res) { return res.json(); }).then(function(res) {
-        if (res.ok && res.email_enabled) {
-            regCodeRow.style.display = '';
-            forgotLink.style.display = '';
-        } else {
-            regCodeRow.style.display = 'none';
-            forgotLink.style.display = 'none';
-        }
-    }).catch(function() {});
+    function avatarFileToUrl(fname) {
+        if (!fname) return '';
+        return SB_URL + '/storage/v1/object/public/avatars/' + fname;
+    }
+
+    function loadDeleted() {
+        return sbGet('deleted_ids?select=id&order=time.desc&limit=2000').then(function(res) {
+            if (res.ok && Array.isArray(res.data)) {
+                deletedCache = {};
+                res.data.forEach(function(r) { deletedCache[r.id] = true; });
+            }
+        });
+    }
+
+    function loadUsers() {
+        return sbGet('users?select=username,is_admin,avatar_file&limit=500').then(function(res) {
+            usersCache = {};
+            if (res.ok && Array.isArray(res.data)) {
+                res.data.forEach(function(u) { usersCache[u.username] = u; });
+            }
+        });
+    }
 
     function showLoginForm() {
         loginForm.style.display = '';
         registerForm.style.display = 'none';
-        resetForm.style.display = 'none';
         loginTab.classList.add('active');
         registerTab.classList.remove('active');
         showError('');
@@ -300,55 +391,8 @@
         loginTab.classList.remove('active');
         registerForm.style.display = '';
         loginForm.style.display = 'none';
-        resetForm.style.display = 'none';
         showError('');
     });
-
-    forgotLink.addEventListener('click', function() {
-        resetForm.style.display = '';
-        loginForm.style.display = 'none';
-        registerForm.style.display = 'none';
-        showError('');
-    });
-
-    backToLogin.addEventListener('click', showLoginForm);
-
-    function bindCodeBtn(btn, emailInputId, purpose) {
-        btn.addEventListener('click', function() {
-            var email = document.getElementById(emailInputId).value.trim();
-            if (!email) {
-                showError('请先填写邮箱');
-                return;
-            }
-            showError('');
-            btn.disabled = true;
-            apiPost('/api/send_code', { email: email, purpose: purpose }).then(function(res) {
-                if (res.ok) {
-                    var n = 60;
-                    btn.textContent = n + '秒后重发';
-                    var timer = setInterval(function() {
-                        n--;
-                        if (n <= 0) {
-                            clearInterval(timer);
-                            btn.disabled = false;
-                            btn.textContent = '获取验证码';
-                        } else {
-                            btn.textContent = n + '秒后重发';
-                        }
-                    }, 1000);
-                } else {
-                    btn.disabled = false;
-                    showError(res.error || '发送失败');
-                }
-            }).catch(function() {
-                btn.disabled = false;
-                showError('无法连接服务器');
-            });
-        });
-    }
-
-    bindCodeBtn(regCodeBtn, 'regEmail', 'register');
-    bindCodeBtn(resetCodeBtn, 'resetEmail', 'reset');
 
     function bindEmailCheck(inputId, hintId, allow) {
         var input = document.getElementById(inputId);
@@ -364,115 +408,110 @@
 
     bindEmailCheck('loginEmail', 'loginEmailHint', ['BENBAIJIE']);
     bindEmailCheck('regEmail', 'regEmailHint');
-    bindEmailCheck('resetEmail', 'resetEmailHint');
 
     loginForm.addEventListener('submit', function(e) {
         e.preventDefault();
         showError('');
-        apiPost('/api/login', {
-            email: document.getElementById('loginEmail').value,
-            password: document.getElementById('loginPassword').value
-        }).then(function(res) {
-            if (res.ok) {
-                localStorage.setItem('chat_token', res.token);
-                localStorage.setItem('chat_username', res.username);
-                localStorage.setItem('chat_admin', res.is_admin ? '1' : '0');
-                enterChat(res.username);
-            } else {
-                showError(res.error || '登录失败');
+        var acct = document.getElementById('loginEmail').value.trim();
+        var password = document.getElementById('loginPassword').value;
+        var lookup;
+        if (acct === 'BENBAIJIE') {
+            lookup = sbGet('users?username=eq.BENBAIJIE&select=email,username,salt,hash,is_admin&limit=1');
+        } else {
+            lookup = sbGet('users?email=eq.' + encodeURIComponent(acct.toLowerCase()) + '&select=email,username,salt,hash,is_admin&limit=1');
+        }
+        lookup.then(function(res) {
+            if (!res.ok || !Array.isArray(res.data) || !res.data.length) {
+                showError('邮箱或密码错误');
+                return;
             }
+            var user = res.data[0];
+            pbkdf2(password, user.salt).then(function(hash) {
+                if (hash !== user.hash) {
+                    showError('邮箱或密码错误');
+                    return;
+                }
+                localStorage.setItem('cloud_email', user.email);
+                localStorage.setItem('chat_username', user.username);
+                localStorage.setItem('chat_admin', user.is_admin ? '1' : '0');
+                enterChat(user.username);
+            }).catch(function() { showError('登录失败，请重试'); });
         }).catch(function() {
-            showError('无法连接服务器');
+            showError('无法连接服务器，请重试');
         });
     });
 
     registerForm.addEventListener('submit', function(e) {
         e.preventDefault();
         showError('');
-        apiPost('/api/register', {
-            username: document.getElementById('regUsername').value,
-            email: document.getElementById('regEmail').value,
-            password: document.getElementById('regPassword').value,
-            code: document.getElementById('regCode').value
-        }).then(function(res) {
-            if (res.ok) {
-                localStorage.setItem('chat_token', res.token);
-                localStorage.setItem('chat_username', res.username);
-                localStorage.setItem('chat_admin', res.is_admin ? '1' : '0');
-                enterChat(res.username);
-            } else {
-                showError(res.error || '注册失败');
-            }
+        var username = document.getElementById('regUsername').value.trim();
+        var email = document.getElementById('regEmail').value.trim().toLowerCase();
+        var password = document.getElementById('regPassword').value;
+        if (!username || username.length > 20) {
+            showError('用户名不能为空且不超过20字');
+            return;
+        }
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+            showError('邮箱格式不正确');
+            return;
+        }
+        if (password.length < 6) {
+            showError('密码至少6位');
+            return;
+        }
+        var salt = bytesToHex(crypto.getRandomValues(new Uint8Array(16)));
+        pbkdf2(password, salt).then(function(hash) {
+            var row = {
+                email: email,
+                username: username,
+                salt: salt,
+                hash: hash,
+                is_admin: false,
+                created: Math.floor(Date.now() / 1000),
+                updated: Math.floor(Date.now() / 1000)
+            };
+            return sbPost('users', row).then(function(res) {
+                if (res.ok) {
+                    localStorage.setItem('cloud_email', email);
+                    localStorage.setItem('chat_username', username);
+                    localStorage.setItem('chat_admin', '0');
+                    enterChat(username);
+                    return;
+                }
+                var msg = (res.error && res.error.message) || '';
+                if (res.status === 409 || msg.indexOf('duplicate') !== -1) {
+                    showError(msg.indexOf('username') !== -1 ? '该用户名已被使用' : '该邮箱已注册');
+                } else {
+                    showError('注册失败，请重试');
+                }
+            });
         }).catch(function() {
-            showError('无法连接服务器');
-        });
-    });
-
-    resetForm.addEventListener('submit', function(e) {
-        e.preventDefault();
-        showError('');
-        apiPost('/api/reset_password', {
-            email: document.getElementById('resetEmail').value,
-            code: document.getElementById('resetCode').value,
-            password: document.getElementById('resetPassword').value
-        }).then(function(res) {
-            if (res.ok) {
-                showLoginForm();
-                authError.style.color = '#7be3a8';
-                showError('密码已重置，请用新密码登录');
-                setTimeout(function() { authError.style.color = ''; }, 3000);
-            } else {
-                showError(res.error || '重置失败');
-            }
-        }).catch(function() {
-            showError('无法连接服务器');
-        });
-    });
-
-    changePwdBtn.addEventListener('click', function() {
-        var showing = changePwdForm.style.display !== 'none';
-        changePwdForm.style.display = showing ? 'none' : 'flex';
-        pwdError.textContent = '';
-    });
-
-    changePwdForm.addEventListener('submit', function(e) {
-        e.preventDefault();
-        pwdError.textContent = '';
-        apiPost('/api/change_password', {
-            token: getToken(),
-            old_password: document.getElementById('oldPwd').value,
-            new_password: document.getElementById('newPwd').value
-        }).then(function(res) {
-            if (res.ok) {
-                changePwdForm.style.display = 'none';
-                changePwdForm.reset();
-            } else {
-                pwdError.textContent = res.error || '修改失败';
-            }
-        }).catch(function() {
-            pwdError.textContent = '无法连接服务器';
+            showError('注册失败，请重试');
         });
     });
 
     logoutBtn.addEventListener('click', function() {
-        apiPost('/api/logout', { token: getToken() });
-        localStorage.removeItem('chat_token');
+        localStorage.removeItem('cloud_email');
         localStorage.removeItem('chat_username');
         localStorage.removeItem('chat_admin');
         setAuthVisible(true);
     });
 
+    changePwdBtn.addEventListener('click', function() {
+        var showing = changePwdForm.style.display !== 'none';
+        changePwdForm.style.display = showing ? 'none' : 'flex';
+    });
+
     function enterChat(username) {
         accountInfo.textContent = T('当前账号：') + username + (isAdmin() ? T('（管理员）') : '');
         setAuthVisible(false);
-        lastId = 0;
         chatMessages.innerHTML = '';
-        loadMessages();
+        refreshAll();
         loadProfile();
     }
 
     function escapeHtml(str) {
-        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
@@ -492,62 +531,50 @@
     }
 
     function renderMessages(list) {
-        var myName = localStorage.getItem('chat_username') || '';
-        var stick = isNearBottom() || lastId === 0;
+        var curName = myName();
+        var stick = isNearBottom();
         var empty = chatMessages.querySelector('.chat-empty');
         if (empty) empty.remove();
         list.forEach(function(m) {
-            if (chatMessages.querySelector('[data-id="' + m.id + '"]')) {
-                lastId = Math.max(lastId, m.id);
-                return;
-            }
+            if (deletedCache[m.id]) return;
+            if (chatMessages.querySelector('[data-id="' + m.id + '"]')) return;
+            var u = usersCache[m.username] || {};
             var item = document.createElement('div');
-            item.className = 'chat-msg' + (m.username === myName ? ' mine' : '');
+            item.className = 'chat-msg' + (m.username === curName ? ' mine' : '');
             item.setAttribute('data-id', m.id);
-            var meta = '<div class="chat-msg-meta">' + avatarHtml(m.avatar, m.username) + '<span class="chat-msg-name">' + escapeHtml(m.username) + '</span>';
-            if (m.admin) meta += '<span class="admin-badge">管理员</span>';
+            var meta = '<div class="chat-msg-meta">' + avatarHtml(avatarFileToUrl(u.avatar_file), m.username) + '<span class="chat-msg-name">' + escapeHtml(m.username) + '</span>';
+            if (u.is_admin) meta += '<span class="admin-badge">管理员</span>';
             meta += ' · ' + formatTime(m.time);
-            if (isAdmin()) meta += ' <button type="button" class="chat-del" data-del="' + m.id + '" title="删除">✕</button>';
             meta += '</div>';
             item.innerHTML = meta + '<div class="chat-msg-bubble">' + escapeHtml(m.content) + '</div>';
             chatMessages.appendChild(item);
-            lastId = Math.max(lastId, m.id);
         });
         if (stick) chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
-    chatMessages.addEventListener('click', function(e) {
-        var btn = e.target.closest('.chat-del');
-        if (!btn) return;
-        var id = btn.getAttribute('data-del');
-        apiPost('/api/delete_message', { token: getToken(), id: id }).then(function(res) {
-            if (res.ok) {
-                var item = chatMessages.querySelector('[data-id="' + id + '"]');
-                if (item) item.remove();
+    function refreshMessages() {
+        sbGet('messages?select=id,username,content,time&order=time.asc&limit=500').then(function(res) {
+            if (!res.ok || !Array.isArray(res.data)) return;
+            var list = res.data.filter(function(m) { return !deletedCache[m.id]; });
+            if (!list.length && !chatMessages.children.length) {
+                chatMessages.innerHTML = '<div class="chat-empty">还没有消息，来发第一条吧！</div>';
+            } else {
+                renderMessages(list);
             }
         }).catch(function() {});
-    });
+    }
 
-    function loadMessages() {
-        fetch('/api/messages?after=' + lastId)
-            .then(function(res) { return res.json(); })
-            .then(function(res) {
-                if (res.ok) {
-                    if (lastId === 0 && res.messages.length === 0) {
-                        chatMessages.innerHTML = '<div class="chat-empty">还没有消息，来发第一条吧！</div>';
-                    } else {
-                        renderMessages(res.messages);
-                    }
-                }
-            })
-            .catch(function() {});
+    function refreshAll() {
+        loadDeleted().then(loadUsers).then(function() {
+            refreshMessages();
+        }).catch(function() {});
     }
 
     function startPolling() {
         stopPolling();
         pollTimer = setInterval(function() {
             if (document.getElementById('chat-page').classList.contains('active-page')) {
-                loadMessages();
+                refreshAll();
             }
         }, 3000);
     }
@@ -564,25 +591,26 @@
         var content = chatInput.value.trim();
         if (!content) return;
         chatInput.value = '';
-        apiPost('/api/messages', { token: getToken(), content: content })
-            .then(function(res) {
-                if (res.ok && res.message) {
-                    renderMessages([res.message]);
-                } else if (!res.ok && res.error) {
-                    localStorage.removeItem('chat_token');
-                    localStorage.removeItem('chat_username');
-                    localStorage.removeItem('chat_admin');
-                    setAuthVisible(true);
-                    showError(res.error);
-                }
-            })
-            .catch(function() {});
+        var msg = {
+            id: genId(),
+            email: myEmail(),
+            username: myName(),
+            content: content,
+            time: Math.floor(Date.now() / 1000)
+        };
+        sbPost('messages', msg).then(function(res) {
+            if (res.ok) {
+                renderMessages([msg]);
+            } else {
+                chatInput.value = content;
+                toast('发送失败，请重试');
+            }
+        }).catch(function() {
+            chatInput.value = content;
+            toast('网络不佳，发送失败，请重试');
+        });
         chatInput.focus();
     });
-
-    function authHeaders() {
-        return { 'Authorization': 'Bearer ' + getToken() };
-    }
 
     var tabChat = document.getElementById('tabChat');
     var tabForum = document.getElementById('tabForum');
@@ -591,9 +619,6 @@
     var forumList = document.getElementById('forumList');
     var forumSearch = document.getElementById('forumSearch');
     var postForm = document.getElementById('postForm');
-    var avatarInput = document.getElementById('avatarInput');
-    var avatarMsg = document.getElementById('avatarMsg');
-    var accountStats = document.getElementById('accountStats');
     var postDetail = document.getElementById('postDetail');
     var newPostBtn = document.getElementById('newPostBtn');
     var postsCache = [];
@@ -619,34 +644,90 @@
         forumView.style.display = '';
         chatView.style.display = 'none';
         backToList();
-        loadPosts();
+        refreshForum();
     });
 
     var searchTimer = null;
     forumSearch.addEventListener('input', function() {
         clearTimeout(searchTimer);
-        searchTimer = setTimeout(loadPosts, 400);
+        searchTimer = setTimeout(renderSearch, 400);
     });
 
-    function loadPosts(reopenId) {
-        var q = forumSearch.value.trim();
-        fetch('/api/posts?q=' + encodeURIComponent(q), { headers: authHeaders() })
-            .then(function(res) { return res.json(); })
-            .then(function(res) {
-                if (res.ok) {
-                    postsCache = res.posts;
-                    renderPosts(res.posts);
-                    if (reopenId) openPost(reopenId);
-                }
-            }).catch(function() {});
+    function renderSearch() {
+        renderPosts(postsCache);
+    }
+
+    function matchesSearch(p) {
+        var q = forumSearch.value.trim().toLowerCase();
+        if (!q) return true;
+        return p.title.toLowerCase().indexOf(q) !== -1 ||
+            p.content.toLowerCase().indexOf(q) !== -1 ||
+            p.username.toLowerCase().indexOf(q) !== -1 ||
+            (p.tags || []).some(function(t) { return t.toLowerCase().indexOf(q) !== -1; });
+    }
+
+    function refreshForum(reopenId) {
+        Promise.all([
+            sbGet('posts?select=id,email,username,title,content,tags,time&order=time.asc&limit=500'),
+            sbGet('replies?select=id,post_id,email,username,content,time&order=time.asc&limit=2000'),
+            sbGet('post_likes?select=post_id,email&limit=5000'),
+            sbGet('follows?select=follower,followee&limit=5000')
+        ]).then(function(results) {
+            var posts = results[0].ok && Array.isArray(results[0].data) ? results[0].data : [];
+            var replies = results[1].ok && Array.isArray(results[1].data) ? results[1].data : [];
+            var likes = results[2].ok && Array.isArray(results[2].data) ? results[2].data : [];
+            var follows = results[3].ok && Array.isArray(results[3].data) ? results[3].data : [];
+            var me = myEmail();
+            var followerCounts = {};
+            follows.forEach(function(f) {
+                followerCounts[f.followee] = (followerCounts[f.followee] || 0) + 1;
+            });
+            var myFollowing = {};
+            follows.forEach(function(f) {
+                if (f.follower === me) myFollowing[f.followee] = true;
+            });
+            postsCache = posts.filter(function(p) { return !deletedCache[p.id]; }).reverse().map(function(p) {
+                var author = usersCache[p.username] || {};
+                var postLikes = likes.filter(function(l) { return l.post_id === p.id; });
+                var postReplies = replies.filter(function(r) { return r.post_id === p.id; });
+                return {
+                    id: p.id,
+                    email: p.email,
+                    username: p.username,
+                    avatar: avatarFileToUrl(author.avatar_file),
+                    title: p.title,
+                    content: p.content,
+                    tags: p.tags || [],
+                    time: p.time,
+                    likes: postLikes.length,
+                    liked: postLikes.some(function(l) { return l.email === me; }),
+                    followers: followerCounts[p.email] || 0,
+                    following: !!myFollowing[p.email],
+                    is_own: p.email === me,
+                    replies: postReplies.map(function(r) {
+                        var ru = usersCache[r.username] || {};
+                        return {
+                            id: r.id,
+                            username: r.username,
+                            avatar: avatarFileToUrl(ru.avatar_file),
+                            content: r.content,
+                            time: r.time
+                        };
+                    })
+                };
+            });
+            renderPosts(postsCache);
+            if (reopenId) openPost(reopenId);
+        }).catch(function() {});
     }
 
     function renderPosts(posts) {
-        if (!posts.length) {
+        var visible = posts.filter(matchesSearch);
+        if (!visible.length) {
             forumList.innerHTML = '<div class="forum-empty">' + T('没有找到相关帖子') + '</div>';
             return;
         }
-        forumList.innerHTML = posts.map(function(p) {
+        forumList.innerHTML = visible.map(function(p) {
             var t = tagsHtml(p.tags);
             return '<div class="post-row" data-id="' + p.id + '">' +
                 '<span class="post-row-icon">📄</span>' +
@@ -666,7 +747,7 @@
         h += '<div class="post" data-id="' + p.id + '">';
         h += '<div class="post-head">' + avatarHtml(p.avatar, p.username) + '<span class="post-name">' + escapeHtml(p.username) + '</span>';
         h += '<span class="post-followers">' + p.followers + T(' 粉丝') + '</span>';
-        if (!p.is_own) h += '<button type="button" class="f-btn f-follow' + (p.following ? ' following' : '') + '" data-user="' + escapeHtml(p.username) + '">' + (p.following ? T('已关注') : T('+ 关注')) + '</button>';
+        if (!p.is_own) h += '<button type="button" class="f-btn f-follow' + (p.following ? ' following' : '') + '" data-email="' + escapeHtml(p.email) + '">' + (p.following ? T('已关注') : T('+ 关注')) + '</button>';
         h += '<span class="post-time">' + formatTime(p.time) + '</span></div>';
         h += '<div class="post-title">' + escapeHtml(p.title) + '</div>';
         if (p.tags && p.tags.length) h += '<div class="post-tags">' + tagsHtml(p.tags) + '</div>';
@@ -674,7 +755,6 @@
         h += '<div class="post-actions">';
         h += '<button type="button" class="f-btn f-like' + (p.liked ? ' liked' : '') + '">' + (p.liked ? '❤' : '♡') + ' ' + p.likes + '</button>';
         h += '<span class="post-followers">' + p.replies.length + T(' 条回复') + '</span>';
-        if (p.can_del) h += '<button type="button" class="f-btn f-del">' + T('删除') + '</button>';
         h += '</div>';
         h += '<div class="post-replies">';
         p.replies.forEach(function(r) {
@@ -708,24 +788,42 @@
         e.stopPropagation();
         forumSearch.value = chip.getAttribute('data-tag');
         backToList();
-        loadPosts();
+        renderSearch();
     }
 
     postForm.addEventListener('submit', function(e) {
         e.preventDefault();
-        apiPost('/api/posts', {
-            token: getToken(),
-            title: document.getElementById('postTitle').value,
-            content: document.getElementById('postContent').value,
-            tags: document.getElementById('postTags').value
-        }).then(function(res) {
+        var title = document.getElementById('postTitle').value.trim();
+        var content = document.getElementById('postContent').value.trim();
+        var tagsRaw = document.getElementById('postTags').value;
+        if (!title || !content) return;
+        var tags = [];
+        tagsRaw.split(/[,，、\s]+/).forEach(function(t) {
+            t = t.replace(/^#/, '').slice(0, 12);
+            if (t && tags.indexOf(t) === -1 && tags.length < 5) tags.push(t);
+        });
+        var post = {
+            id: genId(),
+            email: myEmail(),
+            username: myName(),
+            title: title,
+            content: content,
+            tags: tags,
+            time: Math.floor(Date.now() / 1000)
+        };
+        sbPost('posts', post).then(function(res) {
             if (res.ok) {
                 postForm.reset();
                 postForm.style.display = 'none';
-                loadPosts();
+                refreshForum(post.id);
                 loadProfile();
+            } else {
+                var m = (res.error && res.error.message) || '';
+                toast(m.indexOf('duplicate') !== -1 ? '标题重复或数据冲突，换个标题试试' : '发布失败，请重试');
             }
-        }).catch(function() {});
+        }).catch(function() {
+            toast('网络不佳，发布失败，请重试');
+        });
     });
 
     forumView.addEventListener('click', function(e) {
@@ -738,34 +836,37 @@
             var id = postEl.getAttribute('data-id');
             var likeBtn = e.target.closest('.f-like');
             if (likeBtn) {
-                apiPost('/api/post_like', { token: getToken(), id: id }).then(function(res) {
-                    if (res.ok) {
-                        likeBtn.classList.toggle('liked', res.liked);
-                        likeBtn.textContent = (res.liked ? '❤ ' : '♡ ') + res.likes;
-                    }
-                }).catch(function() {});
+                var me = myEmail();
+                var wasLiked = likeBtn.classList.contains('liked');
+                var toggle = wasLiked
+                    ? sbDelete('post_likes?post_id=eq.' + id + '&email=eq.' + encodeURIComponent(me))
+                    : sbPost('post_likes', { post_id: id, email: me });
+                toggle.then(function(res) {
+                    if (!res.ok) { toast('操作失败，请重试'); return; }
+                    var cur = postsCache.find(function(x) { return x.id === id; });
+                    var count = cur ? cur.likes : 0;
+                    count = wasLiked ? Math.max(0, count - 1) : count + 1;
+                    likeBtn.classList.toggle('liked', !wasLiked);
+                    likeBtn.textContent = (wasLiked ? '♡ ' : '❤ ') + count;
+                    if (cur) cur.liked = !wasLiked;
+                }).catch(function() { toast('网络不佳，操作失败'); });
                 return;
             }
             var followBtn = e.target.closest('.f-follow');
             if (followBtn) {
-                apiPost('/api/follow', { token: getToken(), username: followBtn.getAttribute('data-user') }).then(function(res) {
-                    if (res.ok) {
-                        followBtn.classList.toggle('following', res.following);
-                        followBtn.textContent = res.following ? '已关注' : '+ 关注';
-                        var f = postEl.querySelector('.post-followers');
-                        if (f) f.textContent = res.followers + ' 粉丝';
-                    }
-                }).catch(function() {});
-                return;
-            }
-            var delBtn = e.target.closest('.f-del');
-            if (delBtn) {
-                apiPost('/api/post_delete', { token: getToken(), id: id }).then(function(res) {
-                    if (res.ok) {
-                        backToList();
-                        loadPosts();
-                    }
-                }).catch(function() {});
+                var target = followBtn.getAttribute('data-email');
+                var wasFollowing = followBtn.classList.contains('following');
+                var ftoggle = wasFollowing
+                    ? sbDelete('follows?follower=eq.' + encodeURIComponent(myEmail()) + '&followee=eq.' + encodeURIComponent(target))
+                    : sbPost('follows', { follower: myEmail(), followee: target });
+                ftoggle.then(function(res) {
+                    if (!res.ok) { toast('操作失败，请重试'); return; }
+                    followBtn.classList.toggle('following', !wasFollowing);
+                    followBtn.textContent = wasFollowing ? '+ 关注' : '已关注';
+                    var f = postEl.querySelector('.post-followers');
+                    if (f) f.textContent = (parseInt(f.textContent, 10) || 0) + (wasFollowing ? -1 : 1) + ' 粉丝';
+                    loadProfile();
+                }).catch(function() { toast('网络不佳，操作失败'); });
                 return;
             }
             return;
@@ -783,15 +884,27 @@
         var content = input.value.trim();
         if (!content) return;
         var pid = postEl.getAttribute('data-id');
-        apiPost('/api/post_reply', { token: getToken(), id: pid, content: content }).then(function(res) {
-            if (res.ok) loadPosts(pid);
-        }).catch(function() {});
+        var reply = {
+            id: genId(),
+            post_id: pid,
+            email: myEmail(),
+            username: myName(),
+            content: content,
+            time: Math.floor(Date.now() / 1000)
+        };
+        sbPost('replies', reply).then(function(res) {
+            if (res.ok) {
+                refreshForum(pid);
+            } else {
+                toast('回复失败，请重试');
+            }
+        }).catch(function() { toast('网络不佳，回复失败，请重试'); });
     });
 
     function setMyAvatar(url) {
         var el = document.getElementById('myAvatar');
         if (!el) return;
-        var name = localStorage.getItem('chat_username') || '?';
+        var name = myName() || '?';
         if (url) {
             el.outerHTML = '<img class="avatar avatar-lg" id="myAvatar" src="' + url + '?t=' + Date.now() + '" alt="">';
         } else {
@@ -800,111 +913,48 @@
     }
 
     function loadProfile() {
-        fetch('/api/me', { headers: authHeaders() }).then(function(res) { return res.json(); }).then(function(res) {
-            if (!res.ok) return;
-            setMyAvatar(res.avatar);
-            accountStats.textContent = T('关注 ') + res.following + T(' · 粉丝 ') + res.followers + T(' · 发帖 ') + res.posts;
+        var me = myEmail();
+        if (!me) return;
+        Promise.all([
+            sbGet('follows?follower=eq.' + encodeURIComponent(me) + '&select=followee'),
+            sbGet('follows?followee=eq.' + encodeURIComponent(me) + '&select=follower'),
+            sbGet('posts?email=eq.' + encodeURIComponent(me) + '&select=id')
+        ]).then(function(results) {
+            var following = results[0].ok && Array.isArray(results[0].data) ? results[0].data.length : 0;
+            var followers = results[1].ok && Array.isArray(results[1].data) ? results[1].data.length : 0;
+            var posts = results[2].ok && Array.isArray(results[2].data) ? results[2].data.length : 0;
+            var statsEl = document.getElementById('accountStats');
+            if (statsEl) statsEl.textContent = T('关注 ') + following + T(' · 粉丝 ') + followers + T(' · 发帖 ') + posts;
+            setMyAvatar(avatarFileToUrl((usersCache[myName()] || {}).avatar_file));
         }).catch(function() {});
     }
 
-    avatarInput.addEventListener('change', function() {
-        var file = avatarInput.files[0];
-        avatarInput.value = '';
-        if (!file) return;
-        if (file.size > 5 * 1024 * 1024) {
-            avatarMsg.textContent = '图片太大（最大5MB）';
-            return;
-        }
-        var reader = new FileReader();
-        reader.onload = function() {
-            apiPost('/api/avatar', { token: getToken(), image: reader.result }).then(function(res) {
-                if (res.ok) {
-                    setMyAvatar(res.avatar);
-                    avatarMsg.style.color = '#7be3a8';
-                    avatarMsg.textContent = '头像已更新';
-                    setTimeout(function() { avatarMsg.textContent = ''; avatarMsg.style.color = ''; }, 3000);
-                } else {
-                    avatarMsg.textContent = res.error || '上传失败';
-                }
-            }).catch(function() {
-                avatarMsg.textContent = '无法连接服务器';
-            });
-        };
-        reader.readAsDataURL(file);
-    });
-
     var annList = document.getElementById('annList');
     var annForm = document.getElementById('annForm');
-    var annError = document.getElementById('annError');
 
     function formatDate(ts) {
         var d = new Date(ts * 1000);
         return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     }
 
-    var annsCache = [];
-    var editingAnnId = null;
-
     function loadAnnouncements() {
         if (!annList) return;
-        fetch('/api/announcements').then(function(res) { return res.json(); }).then(function(res) {
-            if (!res.ok) return;
-            annsCache = res.announcements;
-            annList.innerHTML = res.announcements.map(function(a) {
+        sbGet('announcements?select=id,title,content,author,time&order=time.desc&limit=100').then(function(res) {
+            if (!res.ok || !Array.isArray(res.data)) return;
+            var list = res.data.filter(function(a) { return !deletedCache[a.id]; });
+            annList.innerHTML = list.map(function(a) {
                 var h = '<div class="announcement-item">';
                 h += '<div class="announcement-title">' + escapeHtml(a.title) + '</div>';
                 h += '<div class="announcement-meta"><span>' + T('日期 ') + formatDate(a.time) + '</span><span>' + T('作者 ') + escapeHtml(a.author) + '</span></div>';
                 h += '<div class="announcement-content">' + escapeHtml(a.content) + '</div>';
-                if (isAdmin()) h += '<div class="compose-btns ann-btns"><button type="button" class="f-btn ann-edit" data-id="' + a.id + '">' + T('编辑') + '</button><button type="button" class="f-btn ann-del" data-id="' + a.id + '">' + T('删除') + '</button></div>';
                 return h + '</div>';
             }).join('');
+            annList.querySelectorAll('.announcement-item').forEach(function(item, idx) {
+                item.classList.add('reveal', 'in-view');
+                item.style.transitionDelay = idx * 70 + 'ms';
+            });
         }).catch(function() {});
     }
-
-    annForm.addEventListener('submit', function(e) {
-        e.preventDefault();
-        annError.textContent = '';
-        var payload = {
-            token: getToken(),
-            title: document.getElementById('annTitle').value,
-            content: document.getElementById('annContent').value
-        };
-        var url = '/api/announcement';
-        if (editingAnnId) {
-            url = '/api/announcement_edit';
-            payload.id = editingAnnId;
-        }
-        apiPost(url, payload).then(function(res) {
-            if (res.ok) {
-                annForm.reset();
-                editingAnnId = null;
-                annForm.querySelector('.f-btn.primary').textContent = T('发布公告');
-                loadAnnouncements();
-            } else {
-                annError.textContent = res.error || '发布失败';
-            }
-        }).catch(function() { annError.textContent = '无法连接服务器'; });
-    });
-
-    annList.addEventListener('click', function(e) {
-        var edit = e.target.closest('.ann-edit');
-        if (edit) {
-            var a = annsCache.find(function(x) { return x.id === edit.getAttribute('data-id'); });
-            if (a) {
-                editingAnnId = a.id;
-                document.getElementById('annTitle').value = a.title;
-                document.getElementById('annContent').value = a.content;
-                annForm.querySelector('.f-btn.primary').textContent = T('保存修改');
-                annForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-            return;
-        }
-        var del = e.target.closest('.ann-del');
-        if (!del) return;
-        apiPost('/api/announcement_delete', { token: getToken(), id: del.getAttribute('data-id') }).then(function(res) {
-            if (res.ok) loadAnnouncements();
-        }).catch(function() {});
-    });
 
     document.querySelectorAll('.nav-item').forEach(function(btn) {
         btn.addEventListener('click', function() {
@@ -914,31 +964,17 @@
 
     window.addEventListener('langchange', function() {
         loadAnnouncements();
-        if (getToken()) {
-            loadPosts();
-            var name = localStorage.getItem('chat_username') || '';
+        if (myEmail()) {
+            renderPosts(postsCache);
+            var name = myName();
             if (name) accountInfo.textContent = T('当前账号：') + name + (isAdmin() ? T('（管理员）') : '');
         }
     });
 
     loadAnnouncements();
 
-    var savedToken = getToken();
-    if (savedToken) {
-        fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + savedToken } })
-            .then(function(res) { return res.json(); })
-            .then(function(res) {
-                if (res.ok) {
-                    localStorage.setItem('chat_username', res.username);
-                    localStorage.setItem('chat_admin', res.is_admin ? '1' : '0');
-                    enterChat(res.username);
-                } else {
-                    localStorage.removeItem('chat_token');
-                    localStorage.removeItem('chat_username');
-                    localStorage.removeItem('chat_admin');
-                }
-            })
-            .catch(function() {});
+    if (myEmail()) {
+        enterChat(myName());
     }
 })();
 
@@ -947,14 +983,6 @@
     if (!cid) {
         cid = 'c' + Math.random().toString(36).slice(2) + Date.now().toString(36);
         localStorage.setItem('site_cid', cid);
-    }
-
-    function post(path, data) {
-        return fetch(path, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data || {})
-        }).then(function(res) { return res.json(); });
     }
 
     var statTotal = document.getElementById('statTotal');
@@ -974,12 +1002,20 @@
         countSpans.push(span);
     });
 
-    function updateAll(res) {
-        if (!res || !res.ok) return;
-        if (statTotal) statTotal.textContent = res.total_pv;
-        if (statToday) statToday.textContent = res.today_pv;
-        if (statOnline) statOnline.textContent = res.online;
-        var downloads = res.downloads || {};
+    function fetchRetry(url, opts, tries) {
+        tries = tries || 0;
+        return fetch(url, opts).catch(function(err) {
+            if (tries >= 4) throw err;
+            var delays = [1500, 3000, 5000, 8000];
+            return new Promise(function(res) { setTimeout(res, delays[tries]); })
+                .then(function() { return fetchRetry(url, opts, tries + 1); });
+        });
+    }
+
+    function updateAll(stats, downloads) {
+        if (statTotal) statTotal.textContent = stats.total;
+        if (statToday) statToday.textContent = stats.today;
+        if (statOnline) statOnline.textContent = stats.online;
         countSpans.forEach(function(span) {
             var n = downloads[span.getAttribute('data-soft')] || 0;
             span.textContent = T(' · 下载 ') + n + T(' 次');
@@ -987,10 +1023,22 @@
     }
 
     function ping() {
-        post('/api/ping', { cid: cid }).then(updateAll).catch(function() {});
+        Promise.all([
+            fetchRetry(SB_URL + '/rest/v1/rpc/record_visit', {
+                method: 'POST',
+                headers: { 'apikey': SB_PUB, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ p_client: cid })
+            }).then(function(r) { return r.json(); }),
+            fetchRetry(SB_URL + '/rest/v1/rpc/get_downloads', {
+                method: 'POST',
+                headers: { 'apikey': SB_PUB, 'Content-Type': 'application/json' },
+                body: '{}'
+            }).then(function(r) { return r.json(); })
+        ]).then(function(results) {
+            updateAll(results[0] || {}, results[1] || {});
+        }).catch(function() {});
     }
 
-    post('/api/visit').then(ping).catch(function() {});
     ping();
     setInterval(ping, 5000);
 
@@ -1000,11 +1048,14 @@
             var nameEl = card ? card.querySelector('.software-name') : null;
             if (!nameEl) return;
             var name = nameEl.textContent.trim();
-            post('/api/download', { name: name }).then(function(res) {
-                if (!res.ok) return;
+            fetchRetry(SB_URL + '/rest/v1/rpc/increment_download', {
+                method: 'POST',
+                headers: { 'apikey': SB_PUB, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ p_name: name })
+            }).then(function(r) { return r.json(); }).then(function(count) {
                 countSpans.forEach(function(span) {
                     if (span.getAttribute('data-soft') === name) {
-                        span.textContent = T(' · 下载 ') + res.count + T(' 次');
+                        span.textContent = T(' · 下载 ') + count + T(' 次');
                     }
                 });
             }).catch(function() {});
@@ -1068,9 +1119,10 @@
         '回复': 'Reply', '删除': 'Delete', '编辑': 'Edit', '← 返回列表': '← Back to list',
         '没有找到相关帖子': 'No posts found', '当前账号：': 'Account: ', '（管理员）': ' (Admin)',
         '日期 ': 'Date ', '作者 ': 'By ', '关注 ': 'Following ', ' · 粉丝 ': ' · Fans ', ' · 发帖 ': ' · Posts ',
-        ' · 回复 ': ' · Replies ', ' · 下载 ': ' · ', ' 次': ' downloads'
+        ' · 回复 ': ' · Replies ', ' · 下载 ': ' · ', ' 次': ' downloads',
+        '提示：账号与主站通用。头像上传、修改密码、找回密码请到主站操作。': 'Tip: accounts are shared with the main site. Manage avatar, password and recovery there.'
     };
-    var TEXT_SEL = '.nav-item, .page-title, .social-btn, .software-name, .software-desc, .download-btn, .tip-warning, .home-sub, .group-btn, .auth-tab, .auth-submit, .code-btn, .chat-send, .auth-link, .field-hint, #newPostBtn, #cancelPostBtn, .compose-btns .f-btn, #changePwdBtn, #logoutBtn';
+    var TEXT_SEL = '.nav-item, .page-title, .social-btn, .software-name, .software-desc, .download-btn, .tip-warning, .home-sub, .group-btn, .auth-tab, .auth-submit, .code-btn, .chat-send, .auth-link, .field-hint, #newPostBtn, #cancelPostBtn, .compose-btns .f-btn, #changePwdBtn, #logoutBtn, .cloud-note';
 
     window.T = function(s) {
         if ((localStorage.getItem(STORE_KEY) || 'zh') !== 'en') return s;
