@@ -1,8 +1,3 @@
-var SB_URL = "https://njakbxadbnxcfboosuki.supabase.co";
-var SB_PUB = "sb_publishable_833cToT_nTGdqVtBsC2QMQ_28Hy1tqZ";
-
-window.T = window.T || function(s) { return s; };
-
 (function() {
     var bgLayer = document.createElement('div');
     bgLayer.className = 'aurora-bg';
@@ -48,7 +43,7 @@ window.T = window.T || function(s) { return s; };
     function revealInPage(pageEl) {
         if (!pageEl) return;
         var items = pageEl.querySelectorAll('.reveal');
-        items.forEach(function(el) {
+        items.forEach(function(el, i) {
             el.classList.remove('in-view');
         });
         requestAnimationFrame(function() {
@@ -81,7 +76,7 @@ window.T = window.T || function(s) { return s; };
     }
 
     navItems.forEach(function(btn) {
-        btn.addEventListener('click', function() {
+        btn.addEventListener('click', function(e) {
             var pageTarget = btn.getAttribute('data-page');
             if (pageTarget && pages[pageTarget]) {
                 switchPage(pageTarget, btn);
@@ -116,21 +111,24 @@ window.T = window.T || function(s) { return s; };
         }, 9800);
     }
 
-    var imgContainers = document.querySelectorAll('.software-img');
-    imgContainers.forEach(function(container) {
-        container.addEventListener('click', function(e) {
-            e.stopPropagation();
-            var imgElement = container.querySelector('img');
-            if (imgElement && imgElement.src) {
-                window.open(imgElement.src, '_blank');
-            } else {
-                var fallbackSrc = container.getAttribute('data-img-src');
-                if (fallbackSrc) window.open(fallbackSrc, '_blank');
-            }
-        });
+    // 软件卡片图片：点开大图（事件委托，兼容动态渲染的卡片）
+    document.addEventListener('click', function(e) {
+        var container = e.target.closest('.software-img');
+        if (!container) return;
+        var imgElement = container.querySelector('img');
+        if (imgElement && imgElement.src) {
+            window.open(imgElement.src, '_blank');
+        } else {
+            var fallbackSrc = container.getAttribute('data-img-src');
+            if (fallbackSrc) window.open(fallbackSrc, '_blank');
+        }
     });
 
-    var cards = document.querySelectorAll('.software-card');
+    var announcementItems = document.querySelectorAll('.announcement-item');
+    announcementItems.forEach(function(item, idx) {
+        item.classList.add('reveal');
+        item.style.transitionDelay = idx * 70 + 'ms';
+    });
 
     if (typeof IntersectionObserver !== 'undefined') {
         var io = new IntersectionObserver(function(entries) {
@@ -145,57 +143,70 @@ window.T = window.T || function(s) { return s; };
         document.querySelectorAll('.reveal').forEach(function(el) {
             io.observe(el);
         });
-
-        var cardObserver = new IntersectionObserver(function(entries) {
-            entries.forEach(function(entry) {
-                if (entry.isIntersecting) {
-                    entry.target.style.transform = '';
-                    entry.target.classList.remove('rising');
-                    entry.target.offsetHeight;
-                    entry.target.classList.add('rising');
-                } else {
-                    entry.target.style.transform = '';
-                    entry.target.classList.remove('rising');
-                }
-            });
-        }, { threshold: 0.15, root: document.querySelector('.main-content') });
-        document.querySelectorAll('.software-card').forEach(function(card) {
-            cardObserver.observe(card);
-        });
     } else {
         document.querySelectorAll('.reveal').forEach(function(el) {
             el.classList.add('in-view');
         });
-        document.querySelectorAll('.software-card').forEach(function(card) {
-            card.classList.add('rising');
+    }
+
+    // 卡片动效（倾斜+浮现），供下载页动态渲染后重新绑定
+    function bindTilt(card) {
+        var img = card.querySelector('.software-img');
+        card.addEventListener('mousemove', function(e) {
+            var rect = card.getBoundingClientRect();
+            var x = e.clientX - rect.left;
+            var y = e.clientY - rect.top;
+            var px = x / rect.width;
+            var py = y / rect.height;
+            var rx = (py - 0.5) * -8;
+            var ry = (px - 0.5) * 10;
+            card.style.transform =
+                'translateY(-6px) perspective(900px) rotateX(' + rx + 'deg) rotateY(' + ry + 'deg)';
+            if (img) {
+                img.style.setProperty('--mx', (px * 100) + '%');
+                img.style.setProperty('--my', (py * 100) + '%');
+            }
+            card.style.setProperty('--mx', (px * 100) + '%');
+            card.style.setProperty('--my', (py * 100) + '%');
+        });
+        card.addEventListener('mouseleave', function() {
+            card.style.transform = '';
         });
     }
 
-    if (!isTouch) {
-        cards.forEach(function(card) {
-            var img = card.querySelector('.software-img');
-            card.addEventListener('mousemove', function(e) {
-                var rect = card.getBoundingClientRect();
-                var x = e.clientX - rect.left;
-                var y = e.clientY - rect.top;
-                var px = x / rect.width;
-                var py = y / rect.height;
-                var rx = (py - 0.5) * -8;
-                var ry = (px - 0.5) * 10;
-                card.style.transform =
-                    'translateY(-6px) perspective(900px) rotateX(' + rx + 'deg) rotateY(' + ry + 'deg)';
-                if (img) {
-                    img.style.setProperty('--mx', (px * 100) + '%');
-                    img.style.setProperty('--my', (py * 100) + '%');
-                }
-                card.style.setProperty('--mx', (px * 100) + '%');
-                card.style.setProperty('--my', (py * 100) + '%');
+    window.__bindCardFx = function(scope) {
+        var root = scope || document;
+        var allCards = root.querySelectorAll('.software-card');
+        if (typeof IntersectionObserver !== 'undefined') {
+            if (!window.__cardObserver) {
+                window.__cardObserver = new IntersectionObserver(function(entries) {
+                    entries.forEach(function(entry) {
+                        if (entry.isIntersecting) {
+                            entry.target.style.transform = '';
+                            entry.target.classList.remove('rising');
+                            entry.target.offsetHeight;
+                            entry.target.classList.add('rising');
+                        } else {
+                            entry.target.style.transform = '';
+                            entry.target.classList.remove('rising');
+                        }
+                    });
+                }, { threshold: 0.15, root: document.querySelector('.main-content') });
+            }
+            allCards.forEach(function(card) {
+                if (card.dataset.fxBound) return;
+                card.dataset.fxBound = '1';
+                window.__cardObserver.observe(card);
+                if (!isTouch) bindTilt(card);
             });
-            card.addEventListener('mouseleave', function() {
-                card.style.transform = '';
+        } else {
+            allCards.forEach(function(card) {
+                if (!card.classList.contains('rising')) card.classList.add('rising');
             });
-        });
-    }
+        }
+    };
+
+    window.__bindCardFx(document);
 
     var homeBtns = document.querySelectorAll('#home-page .social-btn, #about-page .group-btn');
     homeBtns.forEach(function(btn) {
@@ -219,41 +230,31 @@ window.T = window.T || function(s) { return s; };
     var chatPane = document.getElementById('chatPane');
     if (!authPane || !chatPane) return;
 
+    var loginTab = document.getElementById('loginTab');
+    var registerTab = document.getElementById('registerTab');
     var loginForm = document.getElementById('loginForm');
+    var registerForm = document.getElementById('registerForm');
+    var resetForm = document.getElementById('resetForm');
     var authError = document.getElementById('authError');
     var chatMessages = document.getElementById('chatMessages');
     var chatForm = document.getElementById('chatForm');
     var chatInput = document.getElementById('chatInput');
     var accountInfo = document.getElementById('accountInfo');
     var logoutBtn = document.getElementById('logoutBtn');
+    var forgotLink = document.getElementById('forgotLink');
+    var backToLogin = document.getElementById('backToLogin');
+    var regCodeRow = document.getElementById('regCodeRow');
+    var regCodeBtn = document.getElementById('regCodeBtn');
+    var resetCodeBtn = document.getElementById('resetCodeBtn');
     var changePwdBtn = document.getElementById('changePwdBtn');
     var changePwdForm = document.getElementById('changePwdForm');
+    var pwdError = document.getElementById('pwdError');
 
+    var lastId = 0;
     var pollTimer = null;
-    var deletedCache = {};
-    var usersCache = {};
-    var toastTimer = null;
 
-    function toast(msg) {
-        var el = document.getElementById('cloudToast');
-        if (!el) {
-            el = document.createElement('div');
-            el.id = 'cloudToast';
-            el.className = 'cloud-toast';
-            document.body.appendChild(el);
-        }
-        el.textContent = msg;
-        el.classList.add('show');
-        clearTimeout(toastTimer);
-        toastTimer = setTimeout(function() { el.classList.remove('show'); }, 3500);
-    }
-
-    function myEmail() {
-        return localStorage.getItem('cloud_email') || '';
-    }
-
-    function myName() {
-        return localStorage.getItem('chat_username') || '';
+    function getToken() {
+        return localStorage.getItem('chat_token') || '';
     }
 
     function isAdmin() {
@@ -263,6 +264,7 @@ window.T = window.T || function(s) { return s; };
     function setAuthVisible(showAuth) {
         authPane.style.display = showAuth ? '' : 'none';
         chatPane.style.display = showAuth ? 'none' : 'flex';
+        annForm.style.display = (!showAuth && isAdmin()) ? 'flex' : 'none';
         if (!showAuth) {
             startPolling();
         } else {
@@ -274,104 +276,89 @@ window.T = window.T || function(s) { return s; };
         authError.textContent = msg || '';
     }
 
-    function genId() {
-        return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-    }
-
-    function bytesToHex(buf) {
-        return Array.from(new Uint8Array(buf)).map(function(b) { return ('0' + b.toString(16)).slice(-2); }).join('');
-    }
-
-    function pbkdf2(password, saltHex) {
-        var enc = new TextEncoder();
-        return crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits'])
-            .then(function(key) {
-                return crypto.subtle.deriveBits({
-                    name: 'PBKDF2',
-                    hash: 'SHA-256',
-                    salt: enc.encode(saltHex),
-                    iterations: 60000
-                }, key, 256);
-            })
-            .then(bytesToHex);
-    }
-
-    function sbFetchRetry(url, opts, tries) {
-        tries = tries || 0;
-        return fetch(url, opts).catch(function(err) {
-            if (tries >= 4) throw err;
-            var delays = [1500, 3000, 5000, 8000];
-            return new Promise(function(res) { setTimeout(res, delays[tries]); })
-                .then(function() { return sbFetchRetry(url, opts, tries + 1); });
-        });
-    }
-
-    function sbGet(path) {
-        return sbFetchRetry(SB_URL + '/rest/v1/' + path, {
-            headers: { 'apikey': SB_PUB }
-        }).then(function(res) {
-            return res.json().then(function(data) {
-                return { ok: res.ok, status: res.status, data: data };
-            });
-        });
-    }
-
-    function sbPost(table, body, ignoreDup) {
-        return sbFetchRetry(SB_URL + '/rest/v1/' + table, {
+    function apiPost(path, data) {
+        return fetch(path, {
             method: 'POST',
-            headers: {
-                'apikey': SB_PUB,
-                'Content-Type': 'application/json',
-                'Prefer': ignoreDup ? 'resolution=ignore-duplicates,return=minimal' : 'return=minimal'
-            },
-            body: JSON.stringify(body)
-        }).then(function(res) {
-            if (res.ok) return { ok: true };
-            return res.json().then(function(err) {
-                return { ok: false, status: res.status, error: err };
-            });
-        });
-    }
-
-    function sbDelete(path) {
-        return sbFetchRetry(SB_URL + '/rest/v1/' + path, {
-            method: 'DELETE',
-            headers: { 'apikey': SB_PUB }
-        }).then(function(res) {
-            return { ok: res.ok };
-        });
-    }
-
-    function sbRpc(fn, body) {
-        return sbFetchRetry(SB_URL + '/rest/v1/rpc/' + fn, {
-            method: 'POST',
-            headers: { 'apikey': SB_PUB, 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
         }).then(function(res) { return res.json(); });
     }
 
-    function avatarFileToUrl(fname) {
-        if (!fname) return '';
-        return SB_URL + '/storage/v1/object/public/avatars/' + fname;
+    fetch('/api/config').then(function(res) { return res.json(); }).then(function(res) {
+        if (res.ok && res.email_enabled) {
+            regCodeRow.style.display = '';
+            forgotLink.style.display = '';
+        } else {
+            regCodeRow.style.display = 'none';
+            forgotLink.style.display = 'none';
+        }
+    }).catch(function() {});
+
+    function showLoginForm() {
+        loginForm.style.display = '';
+        registerForm.style.display = 'none';
+        resetForm.style.display = 'none';
+        loginTab.classList.add('active');
+        registerTab.classList.remove('active');
+        showError('');
     }
 
-    function loadDeleted() {
-        return sbGet('deleted_ids?select=id&order=time.desc&limit=2000').then(function(res) {
-            if (res.ok && Array.isArray(res.data)) {
-                deletedCache = {};
-                res.data.forEach(function(r) { deletedCache[r.id] = true; });
+    loginTab.addEventListener('click', showLoginForm);
+
+    registerTab.addEventListener('click', function() {
+        registerTab.classList.add('active');
+        loginTab.classList.remove('active');
+        registerForm.style.display = '';
+        loginForm.style.display = 'none';
+        resetForm.style.display = 'none';
+        showError('');
+    });
+
+    forgotLink.addEventListener('click', function() {
+        resetForm.style.display = '';
+        loginForm.style.display = 'none';
+        registerForm.style.display = 'none';
+        showError('');
+    });
+
+    backToLogin.addEventListener('click', showLoginForm);
+
+    function bindCodeBtn(btn, emailInputId, purpose) {
+        btn.addEventListener('click', function() {
+            var email = document.getElementById(emailInputId).value.trim();
+            if (!email) {
+                showError('请先填写邮箱');
+                return;
             }
+            showError('');
+            btn.disabled = true;
+            apiPost('/api/send_code', { email: email, purpose: purpose }).then(function(res) {
+                if (res.ok) {
+                    var n = 60;
+                    btn.textContent = n + '秒后重发';
+                    var timer = setInterval(function() {
+                        n--;
+                        if (n <= 0) {
+                            clearInterval(timer);
+                            btn.disabled = false;
+                            btn.textContent = '获取验证码';
+                        } else {
+                            btn.textContent = n + '秒后重发';
+                        }
+                    }, 1000);
+                } else {
+                    btn.disabled = false;
+                    showError(res.error || '发送失败');
+                }
+            }).catch(function() {
+                btn.disabled = false;
+                showError('无法连接服务器');
+            });
         });
     }
 
-    function loadUsers() {
-        return sbGet('users?select=username,is_admin,avatar_file&limit=500').then(function(res) {
-            usersCache = {};
-            if (res.ok && Array.isArray(res.data)) {
-                res.data.forEach(function(u) { usersCache[u.username] = u; });
-            }
-        });
-    }
+    bindCodeBtn(regCodeBtn, 'regEmail', 'register');
+    bindCodeBtn(resetCodeBtn, 'resetEmail', 'reset');
 
     function bindEmailCheck(inputId, hintId, allow) {
         var input = document.getElementById(inputId);
@@ -386,61 +373,116 @@ window.T = window.T || function(s) { return s; };
     }
 
     bindEmailCheck('loginEmail', 'loginEmailHint', ['BENBAIJIE']);
+    bindEmailCheck('regEmail', 'regEmailHint');
+    bindEmailCheck('resetEmail', 'resetEmailHint');
 
     loginForm.addEventListener('submit', function(e) {
         e.preventDefault();
         showError('');
-        var acct = document.getElementById('loginEmail').value.trim();
-        var password = document.getElementById('loginPassword').value;
-        var lookup;
-        if (acct === 'BENBAIJIE') {
-            lookup = sbGet('users?username=eq.BENBAIJIE&select=email,username,salt,hash,is_admin&limit=1');
-        } else {
-            lookup = sbGet('users?email=eq.' + encodeURIComponent(acct.toLowerCase()) + '&select=email,username,salt,hash,is_admin&limit=1');
-        }
-        lookup.then(function(res) {
-            if (!res.ok || !Array.isArray(res.data) || !res.data.length) {
-                showError('邮箱或密码错误');
-                return;
+        apiPost('/api/login', {
+            email: document.getElementById('loginEmail').value,
+            password: document.getElementById('loginPassword').value
+        }).then(function(res) {
+            if (res.ok) {
+                localStorage.setItem('chat_token', res.token);
+                localStorage.setItem('chat_username', res.username);
+                localStorage.setItem('chat_admin', res.is_admin ? '1' : '0');
+                enterChat(res.username);
+            } else {
+                showError(res.error || '登录失败');
             }
-            var user = res.data[0];
-            pbkdf2(password, user.salt).then(function(hash) {
-                if (hash !== user.hash) {
-                    showError('邮箱或密码错误');
-                    return;
-                }
-                localStorage.setItem('cloud_email', user.email);
-                localStorage.setItem('chat_username', user.username);
-                localStorage.setItem('chat_admin', user.is_admin ? '1' : '0');
-                enterChat(user.username);
-            }).catch(function() { showError('登录失败，请重试'); });
         }).catch(function() {
-            showError('无法连接服务器，请重试');
+            showError('无法连接服务器');
         });
     });
 
-    logoutBtn.addEventListener('click', function() {
-        localStorage.removeItem('cloud_email');
-        localStorage.removeItem('chat_username');
-        localStorage.removeItem('chat_admin');
-        setAuthVisible(true);
+    registerForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        showError('');
+        apiPost('/api/register', {
+            username: document.getElementById('regUsername').value,
+            email: document.getElementById('regEmail').value,
+            password: document.getElementById('regPassword').value,
+            code: document.getElementById('regCode').value
+        }).then(function(res) {
+            if (res.ok) {
+                localStorage.setItem('chat_token', res.token);
+                localStorage.setItem('chat_username', res.username);
+                localStorage.setItem('chat_admin', res.is_admin ? '1' : '0');
+                enterChat(res.username);
+            } else {
+                showError(res.error || '注册失败');
+            }
+        }).catch(function() {
+            showError('无法连接服务器');
+        });
+    });
+
+    resetForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        showError('');
+        apiPost('/api/reset_password', {
+            email: document.getElementById('resetEmail').value,
+            code: document.getElementById('resetCode').value,
+            password: document.getElementById('resetPassword').value
+        }).then(function(res) {
+            if (res.ok) {
+                showLoginForm();
+                authError.style.color = '#7be3a8';
+                showError('密码已重置，请用新密码登录');
+                setTimeout(function() { authError.style.color = ''; }, 3000);
+            } else {
+                showError(res.error || '重置失败');
+            }
+        }).catch(function() {
+            showError('无法连接服务器');
+        });
     });
 
     changePwdBtn.addEventListener('click', function() {
         var showing = changePwdForm.style.display !== 'none';
         changePwdForm.style.display = showing ? 'none' : 'flex';
+        pwdError.textContent = '';
+    });
+
+    changePwdForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        pwdError.textContent = '';
+        apiPost('/api/change_password', {
+            token: getToken(),
+            old_password: document.getElementById('oldPwd').value,
+            new_password: document.getElementById('newPwd').value
+        }).then(function(res) {
+            if (res.ok) {
+                changePwdForm.style.display = 'none';
+                changePwdForm.reset();
+            } else {
+                pwdError.textContent = res.error || '修改失败';
+            }
+        }).catch(function() {
+            pwdError.textContent = '无法连接服务器';
+        });
+    });
+
+    logoutBtn.addEventListener('click', function() {
+        apiPost('/api/logout', { token: getToken() });
+        localStorage.removeItem('chat_token');
+        localStorage.removeItem('chat_username');
+        localStorage.removeItem('chat_admin');
+        setAuthVisible(true);
     });
 
     function enterChat(username) {
         accountInfo.textContent = T('当前账号：') + username + (isAdmin() ? T('（管理员）') : '');
         setAuthVisible(false);
+        lastId = 0;
         chatMessages.innerHTML = '';
-        refreshAll();
+        loadMessages();
         loadProfile();
     }
 
     function escapeHtml(str) {
-        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
@@ -460,50 +502,62 @@ window.T = window.T || function(s) { return s; };
     }
 
     function renderMessages(list) {
-        var curName = myName();
-        var stick = isNearBottom();
+        var myName = localStorage.getItem('chat_username') || '';
+        var stick = isNearBottom() || lastId === 0;
         var empty = chatMessages.querySelector('.chat-empty');
         if (empty) empty.remove();
         list.forEach(function(m) {
-            if (deletedCache[m.id]) return;
-            if (chatMessages.querySelector('[data-id="' + m.id + '"]')) return;
-            var u = usersCache[m.username] || {};
+            if (chatMessages.querySelector('[data-id="' + m.id + '"]')) {
+                lastId = Math.max(lastId, m.id);
+                return;
+            }
             var item = document.createElement('div');
-            item.className = 'chat-msg' + (m.username === curName ? ' mine' : '');
+            item.className = 'chat-msg' + (m.username === myName ? ' mine' : '');
             item.setAttribute('data-id', m.id);
-            var meta = '<div class="chat-msg-meta">' + avatarHtml(avatarFileToUrl(u.avatar_file), m.username) + '<span class="chat-msg-name">' + escapeHtml(m.username) + '</span>';
-            if (u.is_admin) meta += '<span class="admin-badge">管理员</span>';
+            var meta = '<div class="chat-msg-meta">' + avatarHtml(m.avatar, m.username) + '<span class="chat-msg-name">' + escapeHtml(m.username) + '</span>';
+            if (m.admin) meta += '<span class="admin-badge">管理员</span>';
             meta += ' · ' + formatTime(m.time);
+            if (isAdmin()) meta += ' <button type="button" class="chat-del" data-del="' + m.id + '" title="删除">✕</button>';
             meta += '</div>';
             item.innerHTML = meta + '<div class="chat-msg-bubble">' + escapeHtml(m.content) + '</div>';
             chatMessages.appendChild(item);
+            lastId = Math.max(lastId, m.id);
         });
         if (stick) chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
-    function refreshMessages() {
-        sbGet('messages?select=id,username,content,time&order=time.asc&limit=500').then(function(res) {
-            if (!res.ok || !Array.isArray(res.data)) return;
-            var list = res.data.filter(function(m) { return !deletedCache[m.id]; });
-            if (!list.length && !chatMessages.children.length) {
-                chatMessages.innerHTML = '<div class="chat-empty">还没有消息，来发第一条吧！</div>';
-            } else {
-                renderMessages(list);
+    chatMessages.addEventListener('click', function(e) {
+        var btn = e.target.closest('.chat-del');
+        if (!btn) return;
+        var id = btn.getAttribute('data-del');
+        apiPost('/api/delete_message', { token: getToken(), id: id }).then(function(res) {
+            if (res.ok) {
+                var item = chatMessages.querySelector('[data-id="' + id + '"]');
+                if (item) item.remove();
             }
         }).catch(function() {});
-    }
+    });
 
-    function refreshAll() {
-        loadDeleted().then(loadUsers).then(function() {
-            refreshMessages();
-        }).catch(function() {});
+    function loadMessages() {
+        fetch('/api/messages?after=' + lastId)
+            .then(function(res) { return res.json(); })
+            .then(function(res) {
+                if (res.ok) {
+                    if (lastId === 0 && res.messages.length === 0) {
+                        chatMessages.innerHTML = '<div class="chat-empty">还没有消息，来发第一条吧！</div>';
+                    } else {
+                        renderMessages(res.messages);
+                    }
+                }
+            })
+            .catch(function() {});
     }
 
     function startPolling() {
         stopPolling();
         pollTimer = setInterval(function() {
             if (document.getElementById('chat-page').classList.contains('active-page')) {
-                refreshAll();
+                loadMessages();
             }
         }, 3000);
     }
@@ -520,26 +574,25 @@ window.T = window.T || function(s) { return s; };
         var content = chatInput.value.trim();
         if (!content) return;
         chatInput.value = '';
-        var msg = {
-            id: genId(),
-            email: myEmail(),
-            username: myName(),
-            content: content,
-            time: Math.floor(Date.now() / 1000)
-        };
-        sbPost('messages', msg).then(function(res) {
-            if (res.ok) {
-                renderMessages([msg]);
-            } else {
-                chatInput.value = content;
-                toast('发送失败，请重试');
-            }
-        }).catch(function() {
-            chatInput.value = content;
-            toast('网络不佳，发送失败，请重试');
-        });
+        apiPost('/api/messages', { token: getToken(), content: content })
+            .then(function(res) {
+                if (res.ok && res.message) {
+                    renderMessages([res.message]);
+                } else if (!res.ok && res.error) {
+                    localStorage.removeItem('chat_token');
+                    localStorage.removeItem('chat_username');
+                    localStorage.removeItem('chat_admin');
+                    setAuthVisible(true);
+                    showError(res.error);
+                }
+            })
+            .catch(function() {});
         chatInput.focus();
     });
+
+    function authHeaders() {
+        return { 'Authorization': 'Bearer ' + getToken() };
+    }
 
     var tabChat = document.getElementById('tabChat');
     var tabForum = document.getElementById('tabForum');
@@ -548,6 +601,9 @@ window.T = window.T || function(s) { return s; };
     var forumList = document.getElementById('forumList');
     var forumSearch = document.getElementById('forumSearch');
     var postForm = document.getElementById('postForm');
+    var avatarInput = document.getElementById('avatarInput');
+    var avatarMsg = document.getElementById('avatarMsg');
+    var accountStats = document.getElementById('accountStats');
     var postDetail = document.getElementById('postDetail');
     var newPostBtn = document.getElementById('newPostBtn');
     var postsCache = [];
@@ -573,90 +629,34 @@ window.T = window.T || function(s) { return s; };
         forumView.style.display = '';
         chatView.style.display = 'none';
         backToList();
-        refreshForum();
+        loadPosts();
     });
 
     var searchTimer = null;
     forumSearch.addEventListener('input', function() {
         clearTimeout(searchTimer);
-        searchTimer = setTimeout(renderSearch, 400);
+        searchTimer = setTimeout(loadPosts, 400);
     });
 
-    function renderSearch() {
-        renderPosts(postsCache);
-    }
-
-    function matchesSearch(p) {
-        var q = forumSearch.value.trim().toLowerCase();
-        if (!q) return true;
-        return p.title.toLowerCase().indexOf(q) !== -1 ||
-            p.content.toLowerCase().indexOf(q) !== -1 ||
-            p.username.toLowerCase().indexOf(q) !== -1 ||
-            (p.tags || []).some(function(t) { return t.toLowerCase().indexOf(q) !== -1; });
-    }
-
-    function refreshForum(reopenId) {
-        Promise.all([
-            sbGet('posts?select=id,email,username,title,content,tags,time&order=time.asc&limit=500'),
-            sbGet('replies?select=id,post_id,email,username,content,time&order=time.asc&limit=2000'),
-            sbGet('post_likes?select=post_id,email&limit=5000'),
-            sbGet('follows?select=follower,followee&limit=5000')
-        ]).then(function(results) {
-            var posts = results[0].ok && Array.isArray(results[0].data) ? results[0].data : [];
-            var replies = results[1].ok && Array.isArray(results[1].data) ? results[1].data : [];
-            var likes = results[2].ok && Array.isArray(results[2].data) ? results[2].data : [];
-            var follows = results[3].ok && Array.isArray(results[3].data) ? results[3].data : [];
-            var me = myEmail();
-            var followerCounts = {};
-            follows.forEach(function(f) {
-                followerCounts[f.followee] = (followerCounts[f.followee] || 0) + 1;
-            });
-            var myFollowing = {};
-            follows.forEach(function(f) {
-                if (f.follower === me) myFollowing[f.followee] = true;
-            });
-            postsCache = posts.filter(function(p) { return !deletedCache[p.id]; }).reverse().map(function(p) {
-                var author = usersCache[p.username] || {};
-                var postLikes = likes.filter(function(l) { return l.post_id === p.id; });
-                var postReplies = replies.filter(function(r) { return r.post_id === p.id; });
-                return {
-                    id: p.id,
-                    email: p.email,
-                    username: p.username,
-                    avatar: avatarFileToUrl(author.avatar_file),
-                    title: p.title,
-                    content: p.content,
-                    tags: p.tags || [],
-                    time: p.time,
-                    likes: postLikes.length,
-                    liked: postLikes.some(function(l) { return l.email === me; }),
-                    followers: followerCounts[p.email] || 0,
-                    following: !!myFollowing[p.email],
-                    is_own: p.email === me,
-                    replies: postReplies.map(function(r) {
-                        var ru = usersCache[r.username] || {};
-                        return {
-                            id: r.id,
-                            username: r.username,
-                            avatar: avatarFileToUrl(ru.avatar_file),
-                            content: r.content,
-                            time: r.time
-                        };
-                    })
-                };
-            });
-            renderPosts(postsCache);
-            if (reopenId) openPost(reopenId);
-        }).catch(function() {});
+    function loadPosts(reopenId) {
+        var q = forumSearch.value.trim();
+        fetch('/api/posts?q=' + encodeURIComponent(q), { headers: authHeaders() })
+            .then(function(res) { return res.json(); })
+            .then(function(res) {
+                if (res.ok) {
+                    postsCache = res.posts;
+                    renderPosts(res.posts);
+                    if (reopenId) openPost(reopenId);
+                }
+            }).catch(function() {});
     }
 
     function renderPosts(posts) {
-        var visible = posts.filter(matchesSearch);
-        if (!visible.length) {
+        if (!posts.length) {
             forumList.innerHTML = '<div class="forum-empty">' + T('没有找到相关帖子') + '</div>';
             return;
         }
-        forumList.innerHTML = visible.map(function(p) {
+        forumList.innerHTML = posts.map(function(p) {
             var t = tagsHtml(p.tags);
             return '<div class="post-row" data-id="' + p.id + '">' +
                 '<span class="post-row-icon">📄</span>' +
@@ -676,7 +676,7 @@ window.T = window.T || function(s) { return s; };
         h += '<div class="post" data-id="' + p.id + '">';
         h += '<div class="post-head">' + avatarHtml(p.avatar, p.username) + '<span class="post-name">' + escapeHtml(p.username) + '</span>';
         h += '<span class="post-followers">' + p.followers + T(' 粉丝') + '</span>';
-        if (!p.is_own) h += '<button type="button" class="f-btn f-follow' + (p.following ? ' following' : '') + '" data-email="' + escapeHtml(p.email) + '">' + (p.following ? T('已关注') : T('+ 关注')) + '</button>';
+        if (!p.is_own) h += '<button type="button" class="f-btn f-follow' + (p.following ? ' following' : '') + '" data-user="' + escapeHtml(p.username) + '">' + (p.following ? T('已关注') : T('+ 关注')) + '</button>';
         h += '<span class="post-time">' + formatTime(p.time) + '</span></div>';
         h += '<div class="post-title">' + escapeHtml(p.title) + '</div>';
         if (p.tags && p.tags.length) h += '<div class="post-tags">' + tagsHtml(p.tags) + '</div>';
@@ -684,6 +684,7 @@ window.T = window.T || function(s) { return s; };
         h += '<div class="post-actions">';
         h += '<button type="button" class="f-btn f-like' + (p.liked ? ' liked' : '') + '">' + (p.liked ? '❤' : '♡') + ' ' + p.likes + '</button>';
         h += '<span class="post-followers">' + p.replies.length + T(' 条回复') + '</span>';
+        if (p.can_del) h += '<button type="button" class="f-btn f-del">' + T('删除') + '</button>';
         h += '</div>';
         h += '<div class="post-replies">';
         p.replies.forEach(function(r) {
@@ -717,42 +718,24 @@ window.T = window.T || function(s) { return s; };
         e.stopPropagation();
         forumSearch.value = chip.getAttribute('data-tag');
         backToList();
-        renderSearch();
+        loadPosts();
     }
 
     postForm.addEventListener('submit', function(e) {
         e.preventDefault();
-        var title = document.getElementById('postTitle').value.trim();
-        var content = document.getElementById('postContent').value.trim();
-        var tagsRaw = document.getElementById('postTags').value;
-        if (!title || !content) return;
-        var tags = [];
-        tagsRaw.split(/[,，、\s]+/).forEach(function(t) {
-            t = t.replace(/^#/, '').slice(0, 12);
-            if (t && tags.indexOf(t) === -1 && tags.length < 5) tags.push(t);
-        });
-        var post = {
-            id: genId(),
-            email: myEmail(),
-            username: myName(),
-            title: title,
-            content: content,
-            tags: tags,
-            time: Math.floor(Date.now() / 1000)
-        };
-        sbPost('posts', post).then(function(res) {
+        apiPost('/api/posts', {
+            token: getToken(),
+            title: document.getElementById('postTitle').value,
+            content: document.getElementById('postContent').value,
+            tags: document.getElementById('postTags').value
+        }).then(function(res) {
             if (res.ok) {
                 postForm.reset();
                 postForm.style.display = 'none';
-                refreshForum(post.id);
+                loadPosts();
                 loadProfile();
-            } else {
-                var m = (res.error && res.error.message) || '';
-                toast(m.indexOf('duplicate') !== -1 ? '标题重复或数据冲突，换个标题试试' : '发布失败，请重试');
             }
-        }).catch(function() {
-            toast('网络不佳，发布失败，请重试');
-        });
+        }).catch(function() {});
     });
 
     forumView.addEventListener('click', function(e) {
@@ -765,37 +748,34 @@ window.T = window.T || function(s) { return s; };
             var id = postEl.getAttribute('data-id');
             var likeBtn = e.target.closest('.f-like');
             if (likeBtn) {
-                var me = myEmail();
-                var wasLiked = likeBtn.classList.contains('liked');
-                var toggle = wasLiked
-                    ? sbDelete('post_likes?post_id=eq.' + id + '&email=eq.' + encodeURIComponent(me))
-                    : sbPost('post_likes', { post_id: id, email: me });
-                toggle.then(function(res) {
-                    if (!res.ok) { toast('操作失败，请重试'); return; }
-                    var cur = postsCache.find(function(x) { return x.id === id; });
-                    var count = cur ? cur.likes : 0;
-                    count = wasLiked ? Math.max(0, count - 1) : count + 1;
-                    likeBtn.classList.toggle('liked', !wasLiked);
-                    likeBtn.textContent = (wasLiked ? '♡ ' : '❤ ') + count;
-                    if (cur) cur.liked = !wasLiked;
-                }).catch(function() { toast('网络不佳，操作失败'); });
+                apiPost('/api/post_like', { token: getToken(), id: id }).then(function(res) {
+                    if (res.ok) {
+                        likeBtn.classList.toggle('liked', res.liked);
+                        likeBtn.textContent = (res.liked ? '❤ ' : '♡ ') + res.likes;
+                    }
+                }).catch(function() {});
                 return;
             }
             var followBtn = e.target.closest('.f-follow');
             if (followBtn) {
-                var target = followBtn.getAttribute('data-email');
-                var wasFollowing = followBtn.classList.contains('following');
-                var ftoggle = wasFollowing
-                    ? sbDelete('follows?follower=eq.' + encodeURIComponent(myEmail()) + '&followee=eq.' + encodeURIComponent(target))
-                    : sbPost('follows', { follower: myEmail(), followee: target });
-                ftoggle.then(function(res) {
-                    if (!res.ok) { toast('操作失败，请重试'); return; }
-                    followBtn.classList.toggle('following', !wasFollowing);
-                    followBtn.textContent = wasFollowing ? '+ 关注' : '已关注';
-                    var f = postEl.querySelector('.post-followers');
-                    if (f) f.textContent = (parseInt(f.textContent, 10) || 0) + (wasFollowing ? -1 : 1) + ' 粉丝';
-                    loadProfile();
-                }).catch(function() { toast('网络不佳，操作失败'); });
+                apiPost('/api/follow', { token: getToken(), username: followBtn.getAttribute('data-user') }).then(function(res) {
+                    if (res.ok) {
+                        followBtn.classList.toggle('following', res.following);
+                        followBtn.textContent = res.following ? '已关注' : '+ 关注';
+                        var f = postEl.querySelector('.post-followers');
+                        if (f) f.textContent = res.followers + ' 粉丝';
+                    }
+                }).catch(function() {});
+                return;
+            }
+            var delBtn = e.target.closest('.f-del');
+            if (delBtn) {
+                apiPost('/api/post_delete', { token: getToken(), id: id }).then(function(res) {
+                    if (res.ok) {
+                        backToList();
+                        loadPosts();
+                    }
+                }).catch(function() {});
                 return;
             }
             return;
@@ -813,27 +793,15 @@ window.T = window.T || function(s) { return s; };
         var content = input.value.trim();
         if (!content) return;
         var pid = postEl.getAttribute('data-id');
-        var reply = {
-            id: genId(),
-            post_id: pid,
-            email: myEmail(),
-            username: myName(),
-            content: content,
-            time: Math.floor(Date.now() / 1000)
-        };
-        sbPost('replies', reply).then(function(res) {
-            if (res.ok) {
-                refreshForum(pid);
-            } else {
-                toast('回复失败，请重试');
-            }
-        }).catch(function() { toast('网络不佳，回复失败，请重试'); });
+        apiPost('/api/post_reply', { token: getToken(), id: pid, content: content }).then(function(res) {
+            if (res.ok) loadPosts(pid);
+        }).catch(function() {});
     });
 
     function setMyAvatar(url) {
         var el = document.getElementById('myAvatar');
         if (!el) return;
-        var name = myName() || '?';
+        var name = localStorage.getItem('chat_username') || '?';
         if (url) {
             el.outerHTML = '<img class="avatar avatar-lg" id="myAvatar" src="' + url + '?t=' + Date.now() + '" alt="">';
         } else {
@@ -842,48 +810,118 @@ window.T = window.T || function(s) { return s; };
     }
 
     function loadProfile() {
-        var me = myEmail();
-        if (!me) return;
-        Promise.all([
-            sbGet('follows?follower=eq.' + encodeURIComponent(me) + '&select=followee'),
-            sbGet('follows?followee=eq.' + encodeURIComponent(me) + '&select=follower'),
-            sbGet('posts?email=eq.' + encodeURIComponent(me) + '&select=id')
-        ]).then(function(results) {
-            var following = results[0].ok && Array.isArray(results[0].data) ? results[0].data.length : 0;
-            var followers = results[1].ok && Array.isArray(results[1].data) ? results[1].data.length : 0;
-            var posts = results[2].ok && Array.isArray(results[2].data) ? results[2].data.length : 0;
-            var statsEl = document.getElementById('accountStats');
-            if (statsEl) statsEl.textContent = T('关注 ') + following + T(' · 粉丝 ') + followers + T(' · 发帖 ') + posts;
-            setMyAvatar(avatarFileToUrl((usersCache[myName()] || {}).avatar_file));
+        fetch('/api/me', { headers: authHeaders() }).then(function(res) { return res.json(); }).then(function(res) {
+            if (!res.ok) return;
+            setMyAvatar(res.avatar);
+            accountStats.textContent = T('关注 ') + res.following + T(' · 粉丝 ') + res.followers + T(' · 发帖 ') + res.posts;
         }).catch(function() {});
     }
 
+    avatarInput.addEventListener('change', function() {
+        var file = avatarInput.files[0];
+        avatarInput.value = '';
+        if (!file) return;
+        if (file.size > 5 * 1024 * 1024) {
+            avatarMsg.textContent = '图片太大（最大5MB）';
+            return;
+        }
+        var reader = new FileReader();
+        reader.onload = function() {
+            apiPost('/api/avatar', { token: getToken(), image: reader.result }).then(function(res) {
+                if (res.ok) {
+                    setMyAvatar(res.avatar);
+                    avatarMsg.style.color = '#7be3a8';
+                    avatarMsg.textContent = '头像已更新';
+                    setTimeout(function() { avatarMsg.textContent = ''; avatarMsg.style.color = ''; }, 3000);
+                } else {
+                    avatarMsg.textContent = res.error || '上传失败';
+                }
+            }).catch(function() {
+                avatarMsg.textContent = '无法连接服务器';
+            });
+        };
+        reader.readAsDataURL(file);
+    });
+
     var annList = document.getElementById('annList');
     var annForm = document.getElementById('annForm');
+    var annError = document.getElementById('annError');
 
     function formatDate(ts) {
         var d = new Date(ts * 1000);
         return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     }
 
+    var annsCache = [];
+    var editingAnnId = null;
+
     function loadAnnouncements() {
         if (!annList) return;
-        sbGet('announcements?select=id,title,content,author,time&order=time.desc&limit=100').then(function(res) {
-            if (!res.ok || !Array.isArray(res.data)) return;
-            var list = res.data.filter(function(a) { return !deletedCache[a.id]; });
-            annList.innerHTML = list.map(function(a) {
+        function renderAnns(announcements) {
+            annsCache = announcements;
+            annList.innerHTML = announcements.map(function(a) {
                 var h = '<div class="announcement-item">';
                 h += '<div class="announcement-title">' + escapeHtml(a.title) + '</div>';
                 h += '<div class="announcement-meta"><span>' + T('日期 ') + formatDate(a.time) + '</span><span>' + T('作者 ') + escapeHtml(a.author) + '</span></div>';
                 h += '<div class="announcement-content">' + escapeHtml(a.content) + '</div>';
+                if (isAdmin()) h += '<div class="compose-btns ann-btns"><button type="button" class="f-btn ann-edit" data-id="' + a.id + '">' + T('编辑') + '</button><button type="button" class="f-btn ann-del" data-id="' + a.id + '">' + T('删除') + '</button></div>';
                 return h + '</div>';
             }).join('');
-            annList.querySelectorAll('.announcement-item').forEach(function(item, idx) {
-                item.classList.add('reveal', 'in-view');
-                item.style.transitionDelay = idx * 70 + 'ms';
-            });
-        }).catch(function() {});
+        }
+        fetch('/api/announcements').then(function(res) { return res.json(); }).then(function(res) {
+            if (res && res.ok) { renderAnns(res.announcements); return; }
+            throw new Error('no api');
+        }).catch(function() {
+            fetch('data/announcements.json').then(function(res) { return res.json(); }).then(function(arr) {
+                renderAnns(arr);
+            }).catch(function() {});
+        });
     }
+
+    annForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        annError.textContent = '';
+        var payload = {
+            token: getToken(),
+            title: document.getElementById('annTitle').value,
+            content: document.getElementById('annContent').value
+        };
+        var url = '/api/announcement';
+        if (editingAnnId) {
+            url = '/api/announcement_edit';
+            payload.id = editingAnnId;
+        }
+        apiPost(url, payload).then(function(res) {
+            if (res.ok) {
+                annForm.reset();
+                editingAnnId = null;
+                annForm.querySelector('.f-btn.primary').textContent = T('发布公告');
+                loadAnnouncements();
+            } else {
+                annError.textContent = res.error || '发布失败';
+            }
+        }).catch(function() { annError.textContent = '无法连接服务器'; });
+    });
+
+    annList.addEventListener('click', function(e) {
+        var edit = e.target.closest('.ann-edit');
+        if (edit) {
+            var a = annsCache.find(function(x) { return x.id === edit.getAttribute('data-id'); });
+            if (a) {
+                editingAnnId = a.id;
+                document.getElementById('annTitle').value = a.title;
+                document.getElementById('annContent').value = a.content;
+                annForm.querySelector('.f-btn.primary').textContent = T('保存修改');
+                annForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            return;
+        }
+        var del = e.target.closest('.ann-del');
+        if (!del) return;
+        apiPost('/api/announcement_delete', { token: getToken(), id: del.getAttribute('data-id') }).then(function(res) {
+            if (res.ok) loadAnnouncements();
+        }).catch(function() {});
+    });
 
     document.querySelectorAll('.nav-item').forEach(function(btn) {
         btn.addEventListener('click', function() {
@@ -893,18 +931,240 @@ window.T = window.T || function(s) { return s; };
 
     window.addEventListener('langchange', function() {
         loadAnnouncements();
-        if (myEmail()) {
-            renderPosts(postsCache);
-            var name = myName();
+        if (getToken()) {
+            loadPosts();
+            var name = localStorage.getItem('chat_username') || '';
             if (name) accountInfo.textContent = T('当前账号：') + name + (isAdmin() ? T('（管理员）') : '');
         }
     });
 
     loadAnnouncements();
 
-    if (myEmail()) {
-        enterChat(myName());
+    var savedToken = getToken();
+    if (savedToken) {
+        fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + savedToken } })
+            .then(function(res) { return res.json(); })
+            .then(function(res) {
+                if (res.ok) {
+                    localStorage.setItem('chat_username', res.username);
+                    localStorage.setItem('chat_admin', res.is_admin ? '1' : '0');
+                    enterChat(res.username);
+                } else {
+                    localStorage.removeItem('chat_token');
+                    localStorage.removeItem('chat_username');
+                    localStorage.removeItem('chat_admin');
+                }
+            })
+            .catch(function() {});
     }
+})();
+
+(function() {
+    // 下载页软件管理：动态渲染 + 管理员发布/编辑/删除/排序
+    var grid = document.getElementById('downloadGrid');
+    if (!grid) return;
+    var adminBar = document.getElementById('dlAdminBar');
+    var addBtn = document.getElementById('dlAddBtn');
+    var modal = document.getElementById('dlModal');
+    var modalTitle = document.getElementById('dlModalTitle');
+    var swError = document.getElementById('swError');
+    var imgInput = document.getElementById('swImage');
+    var imgPreview = document.getElementById('swImgPreview');
+    var imgThumb = document.getElementById('swImgThumb');
+    var imgClear = document.getElementById('swImgClear');
+    var list = [];
+    var editingId = null;
+    var pendingImage = null; // 'KEEP' 保持原图 | 'CLEAR' 移除 | 'DATA:...' 新图 base64 | null 无操作
+
+    function isAdmin() { return localStorage.getItem('chat_admin') === '1'; }
+    function getToken() { return localStorage.getItem('chat_token') || ''; }
+    function T(s) { return window.T ? window.T(s) : s; }
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+    function apiPost(path, data) {
+        return fetch(path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }).then(function(res) { return res.json(); });
+    }
+
+    function render() {
+        var admin = isAdmin();
+        grid.innerHTML = list.map(function(s) {
+            var h = '<div class="software-card" data-id="' + esc(s.id) + '" data-name="' + esc(s.name) + '">';
+            h += '<div class="software-img"' + (s.image ? ' data-img-src="' + esc(s.image) + '"' : '') + '>';
+            if (s.image) h += '<img src="' + esc(s.image) + '" alt="' + esc(s.name) + '">';
+            h += '</div><div class="software-info">';
+            h += '<div class="software-name">' + esc(s.name) + '</div>';
+            h += '<div class="software-desc">' + esc(s.desc) + '</div>';
+            h += '<div class="version-meta">版本 ' + esc(s.version) + ' | 日期 ' + esc(s.date) + ' | 大小 ' + esc(s.size) + ' | 作者 ' + esc(s.author);
+            h += '<span class="dl-count" data-soft="' + esc(s.name) + '">' + T(' · 下载 ') + '0' + T(' 次') + '</span></div>';
+            if (s.url) h += '<a href="' + esc(s.url) + '" class="download-btn" target="_blank" rel="noopener">下载</a>';
+            if (admin) {
+                h += '<div class="dl-tools">'
+                  + '<button type="button" class="f-btn dl-edit">编辑</button>'
+                  + '<button type="button" class="f-btn dl-del">删除</button>'
+                  + '<button type="button" class="f-btn dl-up" title="上移">↑</button>'
+                  + '<button type="button" class="f-btn dl-down" title="下移">↓</button>'
+                  + '</div>';
+            }
+            h += '</div></div>';
+            return h;
+        }).join('');
+        if (adminBar) adminBar.style.display = admin ? 'flex' : 'none';
+        if (window.__bindCardFx) window.__bindCardFx(grid);
+        if (window.__applyLangText) window.__applyLangText(grid);
+    }
+
+    function load() {
+        function applyList(arr) { list = arr || []; render(); }
+        fetch('/api/software').then(function(res) { return res.json(); }).then(function(res) {
+            if (res && res.ok) { applyList(res.software); return; }
+            throw new Error('no api');
+        }).catch(function() {
+            fetch('data/software.json').then(function(res) { return res.json(); }).then(function(arr) {
+                applyList(arr);
+            }).catch(function() {});
+        });
+    }
+
+    // ---- 弹窗 ----
+    function resetModal() {
+        editingId = null;
+        pendingImage = null;
+        swError.textContent = '';
+        imgInput.value = '';
+        imgPreview.style.display = 'none';
+        imgThumb.removeAttribute('src');
+        modalTitle.textContent = T('发布软件');
+        document.getElementById('swSaveBtn').textContent = T('发布');
+        ['swName', 'swDesc', 'swVersion', 'swDate', 'swSize', 'swAuthor', 'swUrl'].forEach(function(id) {
+            document.getElementById(id).value = '';
+        });
+    }
+
+    function openModal(item) {
+        resetModal();
+        if (item) {
+            editingId = item.id;
+            document.getElementById('swName').value = item.name || '';
+            document.getElementById('swDesc').value = item.desc || '';
+            document.getElementById('swVersion').value = item.version || '';
+            document.getElementById('swDate').value = item.date || '';
+            document.getElementById('swSize').value = item.size || '';
+            document.getElementById('swAuthor').value = item.author || '';
+            document.getElementById('swUrl').value = item.url || '';
+            modalTitle.textContent = T('编辑软件');
+            document.getElementById('swSaveBtn').textContent = T('保存');
+            if (item.image) {
+                pendingImage = 'KEEP';
+                imgThumb.src = item.image;
+                imgPreview.style.display = 'flex';
+            }
+        }
+        modal.style.display = 'flex';
+    }
+
+    function closeModal() { modal.style.display = 'none'; }
+
+    addBtn.addEventListener('click', function() { openModal(null); });
+    document.getElementById('swCancelBtn').addEventListener('click', closeModal);
+    modal.addEventListener('click', function(e) { if (e.target === modal) closeModal(); });
+
+    imgInput.addEventListener('change', function() {
+        var file = imgInput.files && imgInput.files[0];
+        if (!file) {
+            if (pendingImage && pendingImage.indexOf('DATA:') === 0) pendingImage = null;
+            imgPreview.style.display = (pendingImage === 'KEEP') ? 'flex' : 'none';
+            if (pendingImage !== 'KEEP') imgThumb.removeAttribute('src');
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            swError.textContent = '图片太大（最大5MB）';
+            imgInput.value = '';
+            return;
+        }
+        swError.textContent = '';
+        var reader = new FileReader();
+        reader.onload = function() {
+            pendingImage = 'DATA:' + reader.result;
+            imgThumb.src = reader.result;
+            imgPreview.style.display = 'flex';
+        };
+        reader.readAsDataURL(file);
+    });
+
+    imgClear.addEventListener('click', function() {
+        pendingImage = 'CLEAR';
+        imgInput.value = '';
+        imgPreview.style.display = 'none';
+        imgThumb.removeAttribute('src');
+    });
+
+    document.getElementById('swSaveBtn').addEventListener('click', function() {
+        var name = document.getElementById('swName').value.trim();
+        if (!name) { swError.textContent = '软件名不能为空'; return; }
+        var image;
+        if (pendingImage === 'KEEP') image = 'keep';
+        else if (pendingImage === 'CLEAR') image = '';
+        else if (pendingImage && pendingImage.indexOf('DATA:') === 0) image = pendingImage.slice(5);
+        else image = editingId ? 'keep' : '';
+        var btn = document.getElementById('swSaveBtn');
+        btn.disabled = true;
+        apiPost('/api/software_save', {
+            token: getToken(),
+            id: editingId || '',
+            name: name,
+            desc: document.getElementById('swDesc').value,
+            version: document.getElementById('swVersion').value,
+            date: document.getElementById('swDate').value,
+            size: document.getElementById('swSize').value,
+            author: document.getElementById('swAuthor').value,
+            url: document.getElementById('swUrl').value,
+            image: image
+        }).then(function(res) {
+            btn.disabled = false;
+            if (res.ok) { closeModal(); load(); }
+            else swError.textContent = res.error || '保存失败';
+        }).catch(function() { btn.disabled = false; swError.textContent = '无法连接服务器'; });
+    });
+
+    grid.addEventListener('click', function(e) {
+        var card = e.target.closest('.software-card');
+        if (!card) return;
+        var id = card.getAttribute('data-id');
+        if (e.target.closest('.dl-edit')) {
+            var item = list.find(function(s) { return s.id === id; });
+            if (item) openModal(item);
+            return;
+        }
+        if (e.target.closest('.dl-del')) {
+            if (!confirm('确定删除「' + (card.getAttribute('data-name') || '') + '」吗？删除后无法恢复。')) return;
+            apiPost('/api/software_delete', { token: getToken(), id: id }).then(function(res) {
+                if (res.ok) load();
+            }).catch(function() {});
+            return;
+        }
+        var up = e.target.closest('.dl-up');
+        var down = e.target.closest('.dl-down');
+        if (up || down) {
+            apiPost('/api/software_move', { token: getToken(), id: id, dir: up ? 'up' : 'down' }).then(function(res) {
+                if (res.ok) load();
+            }).catch(function() {});
+        }
+    });
+
+    document.querySelectorAll('.nav-item').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            if (btn.getAttribute('data-page') === 'download') load();
+        });
+    });
+
+    load();
 })();
 
 (function() {
@@ -914,81 +1174,53 @@ window.T = window.T || function(s) { return s; };
         localStorage.setItem('site_cid', cid);
     }
 
+    function post(path, data) {
+        return fetch(path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data || {})
+        }).then(function(res) { return res.json(); });
+    }
+
     var statTotal = document.getElementById('statTotal');
     var statToday = document.getElementById('statToday');
     var statOnline = document.getElementById('statOnline');
 
-    var countSpans = [];
-    document.querySelectorAll('.software-card').forEach(function(card) {
-        var nameEl = card.querySelector('.software-name');
-        var meta = card.querySelector('.version-meta');
-        if (!nameEl || !meta) return;
-        var span = document.createElement('span');
-        span.className = 'dl-count';
-        span.setAttribute('data-soft', nameEl.textContent.trim());
-        span.textContent = ' · 下载 0 次';
-        meta.appendChild(span);
-        countSpans.push(span);
-    });
-
-    function fetchRetry(url, opts, tries) {
-        tries = tries || 0;
-        return fetch(url, opts).catch(function(err) {
-            if (tries >= 4) throw err;
-            var delays = [1500, 3000, 5000, 8000];
-            return new Promise(function(res) { setTimeout(res, delays[tries]); })
-                .then(function() { return fetchRetry(url, opts, tries + 1); });
-        });
-    }
-
-    function updateAll(stats, downloads) {
-        if (statTotal) statTotal.textContent = stats.total;
-        if (statToday) statToday.textContent = stats.today;
-        if (statOnline) statOnline.textContent = stats.online;
-        countSpans.forEach(function(span) {
+    function updateAll(res) {
+        if (!res || !res.ok) return;
+        if (statTotal) statTotal.textContent = res.total_pv;
+        if (statToday) statToday.textContent = res.today_pv;
+        if (statOnline) statOnline.textContent = res.online;
+        var downloads = res.downloads || {};
+        document.querySelectorAll('.dl-count').forEach(function(span) {
             var n = downloads[span.getAttribute('data-soft')] || 0;
             span.textContent = T(' · 下载 ') + n + T(' 次');
         });
     }
 
     function ping() {
-        Promise.all([
-            fetchRetry(SB_URL + '/rest/v1/rpc/record_visit', {
-                method: 'POST',
-                headers: { 'apikey': SB_PUB, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ p_client: cid })
-            }).then(function(r) { return r.json(); }),
-            fetchRetry(SB_URL + '/rest/v1/rpc/get_downloads', {
-                method: 'POST',
-                headers: { 'apikey': SB_PUB, 'Content-Type': 'application/json' },
-                body: '{}'
-            }).then(function(r) { return r.json(); })
-        ]).then(function(results) {
-            updateAll(results[0] || {}, results[1] || {});
-        }).catch(function() {});
+        post('/api/ping', { cid: cid }).then(updateAll).catch(function() {});
     }
 
+    post('/api/visit').then(ping).catch(function() {});
     ping();
     setInterval(ping, 5000);
 
-    document.querySelectorAll('.software-card .download-btn').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var card = btn.closest('.software-card');
-            var nameEl = card ? card.querySelector('.software-name') : null;
-            if (!nameEl) return;
-            var name = nameEl.textContent.trim();
-            fetchRetry(SB_URL + '/rest/v1/rpc/increment_download', {
-                method: 'POST',
-                headers: { 'apikey': SB_PUB, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ p_name: name })
-            }).then(function(r) { return r.json(); }).then(function(count) {
-                countSpans.forEach(function(span) {
-                    if (span.getAttribute('data-soft') === name) {
-                        span.textContent = T(' · 下载 ') + count + T(' 次');
-                    }
-                });
-            }).catch(function() {});
-        });
+    document.addEventListener('click', function(e) {
+        var btn = e.target.closest('.download-btn');
+        if (!btn) return;
+        var card = btn.closest('.software-card');
+        if (!card) return;
+        var name = card.getAttribute('data-name') || '';
+        if (!name) return;
+        post('/api/download', { name: name }).then(function(res) {
+            if (!res.ok) return;
+            document.querySelectorAll('.dl-count').forEach(function(span) {
+                if (span.getAttribute('data-soft') === name) {
+                    span.textContent = T(' · 下载 ') + res.count + T(' 次');
+                }
+            });
+        }).catch(function() {});
     });
 })();
 
@@ -1049,10 +1281,13 @@ window.T = window.T || function(s) { return s; };
         '没有找到相关帖子': 'No posts found', '当前账号：': 'Account: ', '（管理员）': ' (Admin)',
         '日期 ': 'Date ', '作者 ': 'By ', '关注 ': 'Following ', ' · 粉丝 ': ' · Fans ', ' · 发帖 ': ' · Posts ',
         ' · 回复 ': ' · Replies ', ' · 下载 ': ' · ', ' 次': ' downloads',
-        '提示：账号与主站通用。头像上传、修改密码、找回密码请到主站操作。': 'Tip: accounts are shared with the main site. Manage avatar, password and recovery there.',
-        '注册账号、找回密码请到主站操作': 'Register or reset password on the main site'
+        '+ 发布软件': '+ Publish', '发布软件': 'Publish Software', '编辑软件': 'Edit Software',
+        '发布': 'Publish', '保存': 'Save', '移除图片': 'Remove Image',
+        '软件名称': 'Software name', '软件简介...': 'Description...',
+        '如 V1.0': 'e.g. V1.0', '如 2026-10-10': 'e.g. 2026-10-10', '如 3.75 MB': 'e.g. 3.75 MB',
+        '网盘链接或本地文件名': 'Download link or local file'
     };
-    var TEXT_SEL = '.nav-item, .page-title, .social-btn, .software-name, .software-desc, .download-btn, .tip-warning, .home-sub, .group-btn, .auth-tab, .auth-submit, .code-btn, .chat-send, .auth-link, .field-hint, #newPostBtn, #cancelPostBtn, .compose-btns .f-btn, #changePwdBtn, #logoutBtn, .cloud-note';
+    var TEXT_SEL = '.nav-item, .page-title, .social-btn, .software-name, .software-desc, .download-btn, .tip-warning, .home-sub, .group-btn, .auth-tab, .auth-submit, .code-btn, .chat-send, .auth-link, .field-hint, #newPostBtn, #cancelPostBtn, .compose-btns .f-btn, #changePwdBtn, #logoutBtn';
 
     window.T = function(s) {
         if ((localStorage.getItem(STORE_KEY) || 'zh') !== 'en') return s;
@@ -1092,6 +1327,26 @@ window.T = window.T || function(s) { return s; };
         if (btn) btn.textContent = toEn ? '中文' : 'EN';
         window.dispatchEvent(new Event('langchange'));
     }
+
+    // 供动态渲染的区域（如下载页卡片）做局部翻译
+    window.__applyLangText = function(root) {
+        if (!root) return;
+        var toEn = (localStorage.getItem(STORE_KEY) || 'zh') === 'en';
+        root.querySelectorAll(TEXT_SEL).forEach(function(el) {
+            if (!el.dataset.zh) el.dataset.zh = el.textContent;
+            var zh = el.dataset.zh;
+            el.textContent = toEn ? (DICT[zh] || zh) : zh;
+        });
+        root.querySelectorAll('.version-meta').forEach(function(el) {
+            el.childNodes.forEach(function(node) {
+                if (node.nodeType !== 3) return;
+                if (!node._zh) node._zh = node.nodeValue;
+                node.nodeValue = toEn
+                    ? node._zh.replace(/版本/g, 'Ver').replace(/日期/g, 'Date').replace(/大小/g, 'Size').replace(/作者/g, 'By')
+                    : node._zh;
+            });
+        });
+    };
 
     var langBtn = document.getElementById('langBtn');
     if (langBtn) {
