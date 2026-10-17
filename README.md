@@ -44,7 +44,7 @@ DLSS5 神经渲染工具，其他游戏也可使用。请下载文件版，不�
 
 ---
 
-# English Version
+# English
 **New Website: znine.fun**
 > New site, you can download all software here.
 
