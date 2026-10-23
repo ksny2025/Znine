@@ -18,6 +18,15 @@
         if (typeof input === 'string') input = window.__apiUrl(input);
         return origFetch.call(this, input, init);
     };
+    // 后端图片加载失败时回退到 GitHub 静态图（捕获阶段委托，动态渲染的卡片也生效）
+    document.addEventListener('error', function (e) {
+        var t = e.target;
+        if (t && t.tagName === 'IMG' && t.getAttribute && t.getAttribute('data-fb')) {
+            var fb = t.getAttribute('data-fb');
+            t.removeAttribute('data-fb');
+            t.src = fb;
+        }
+    }, true);
 })();
 
 (function() {
@@ -1018,9 +1027,15 @@
         var admin = isAdmin();
         grid.innerHTML = list.map(function(s) {
             var h = '<div class="software-card" data-id="' + esc(s.id) + '" data-name="' + esc(s.name) + '">';
-            var imgUrl = s.image && window.__apiUrl ? window.__apiUrl(s.image) : s.image;
+            var imgUrl = s.image;
+            var imgFb = '';
+            if (imgUrl && window.__API_BASE && !/^https?:/i.test(String(imgUrl))) {
+                // 有后端时图片优先走隧道（GitHub 很多人连不上），加载失败自动回退 GitHub 静态图
+                imgFb = String(s.image);
+                imgUrl = window.__API_BASE + '/' + String(imgUrl).replace(/^\/+/, '');
+            }
             h += '<div class="software-img"' + (imgUrl ? ' data-img-src="' + esc(imgUrl) + '"' : '') + '>';
-            if (imgUrl) h += '<img src="' + esc(imgUrl) + '" alt="' + esc(s.name) + '">';
+            if (imgUrl) h += '<img src="' + esc(imgUrl) + '" alt="' + esc(s.name) + '"' + (imgFb ? ' data-fb="' + esc(imgFb) + '"' : '') + '>';
             h += '</div><div class="software-info">';
             h += '<div class="software-name">' + esc(s.name) + '</div>';
             h += '<div class="software-desc">' + esc(s.desc) + '</div>';
