@@ -1,3 +1,25 @@
+/* ===== 后端入口 =====
+   znine.fun（GitHub Pages）上的页面直接通过 HTTPS 调用本机隧道后端；
+   本地直接打开（18080）时保持原来的相对路径。
+   后端连不上时，各模块自动回退到仓库里的静态 data/*.json。 */
+(function () {
+    var host = (location.hostname || '').toLowerCase();
+    var remote = (host === 'znine.fun' || host === 'www.znine.fun' || host === 'ksny2025.github.io');
+    window.__API_BASE = remote ? 'https://api.znine.fun:54037' : '';
+    if (!window.__API_BASE) return;
+    window.__apiUrl = function (u) {
+        if (typeof u !== 'string' || !u) return u;
+        if (u.charAt(0) === '/' && u.charAt(1) !== '/') return window.__API_BASE + u;
+        return u;
+    };
+    var origFetch = window.fetch;
+    if (!origFetch) return;
+    window.fetch = function (input, init) {
+        if (typeof input === 'string') input = window.__apiUrl(input);
+        return origFetch.call(this, input, init);
+    };
+})();
+
 (function() {
     var bgLayer = document.createElement('div');
     bgLayer.className = 'aurora-bg';
@@ -487,7 +509,7 @@
     }
 
     function avatarHtml(url, name) {
-        if (url) return '<img class="avatar" src="' + url + '" alt="">';
+        if (url) return '<img class="avatar" src="' + (window.__apiUrl ? window.__apiUrl(url) : url) + '" alt="">';
         return '<span class="avatar avatar-letter">' + escapeHtml((name || '?').charAt(0).toUpperCase()) + '</span>';
     }
 
@@ -996,14 +1018,21 @@
         var admin = isAdmin();
         grid.innerHTML = list.map(function(s) {
             var h = '<div class="software-card" data-id="' + esc(s.id) + '" data-name="' + esc(s.name) + '">';
-            h += '<div class="software-img"' + (s.image ? ' data-img-src="' + esc(s.image) + '"' : '') + '>';
-            if (s.image) h += '<img src="' + esc(s.image) + '" alt="' + esc(s.name) + '">';
+            var imgUrl = s.image && window.__apiUrl ? window.__apiUrl(s.image) : s.image;
+            h += '<div class="software-img"' + (imgUrl ? ' data-img-src="' + esc(imgUrl) + '"' : '') + '>';
+            if (imgUrl) h += '<img src="' + esc(imgUrl) + '" alt="' + esc(s.name) + '">';
             h += '</div><div class="software-info">';
             h += '<div class="software-name">' + esc(s.name) + '</div>';
             h += '<div class="software-desc">' + esc(s.desc) + '</div>';
             h += '<div class="version-meta">版本 ' + esc(s.version) + ' | 日期 ' + esc(s.date) + ' | 大小 ' + esc(s.size) + ' | 作者 ' + esc(s.author);
             h += '<span class="dl-count" data-soft="' + esc(s.name) + '">' + T(' · 下载 ') + '0' + T(' 次') + '</span></div>';
-            if (s.url) h += '<a href="' + esc(s.url) + '" class="download-btn" target="_blank" rel="noopener">下载</a>';
+            if (s.url) {
+                var dlUrl = String(s.url);
+                if (window.__API_BASE && !/^https?:/i.test(dlUrl)) {
+                    dlUrl = window.__API_BASE + '/' + dlUrl.replace(/^\/+/, '');
+                }
+                h += '<a href="' + esc(dlUrl) + '" class="download-btn" target="_blank" rel="noopener">下载</a>';
+            }
             if (admin) {
                 h += '<div class="dl-tools">'
                   + '<button type="button" class="f-btn dl-edit">编辑</button>'
@@ -1062,7 +1091,7 @@
             document.getElementById('swSaveBtn').textContent = T('保存');
             if (item.image) {
                 pendingImage = 'KEEP';
-                imgThumb.src = item.image;
+                imgThumb.src = window.__apiUrl ? window.__apiUrl(item.image) : item.image;
                 imgPreview.style.display = 'flex';
             }
         }
